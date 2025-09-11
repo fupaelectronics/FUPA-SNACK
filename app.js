@@ -45,6 +45,7 @@ let currentUser = null;
 let userData = null;
 let customRules = {};
 let presenceStatus = null;
+let allUsers = [];
 
 // Utility functions
 const $ = (sel) => document.querySelector(sel);
@@ -216,7 +217,7 @@ async function recordPresence(jenis, status, coordinates, imageUrl) {
 
 // Get user's current location
 function getCurrentLocation() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) {
     if (!navigator.geolocation) {
       reject(new Error('Geolocation is not supported by this browser.'));
     } else {
@@ -305,10 +306,11 @@ async function updateUserProfile(uid, updates) {
   }
 }
 
-// Submit cuti request
+// Submit cuti request - PERBAIKAN: Kirim notifikasi ke semua admin
 async function submitCutiRequest(jenis, tanggal, catatan) {
   try {
-    await db.collection('cuti_requests').add({
+    // Buat permintaan cuti
+    const cutiRef = await db.collection('cuti_requests').add({
       userId: currentUser.uid,
       userName: userData.nama || currentUser.email,
       jenis,
@@ -318,16 +320,23 @@ async function submitCutiRequest(jenis, tanggal, catatan) {
       timestamp: getServerTime()
     });
     
-    // Send notification to admin
-    await db.collection('notifications').add({
-      type: 'cuti_request',
-      userId: currentUser.uid,
-      userName: userData.nama || currentUser.email,
-      message: `Pengajuan cuti ${jenis} pada ${tanggal}`,
-      timestamp: getServerTime(),
-      read: false
+    // Kirim notifikasi ke semua admin
+    const notificationsBatch = db.batch();
+    const notificationsRef = db.collection('notifications');
+    
+    ADMIN_UIDS.forEach(adminUid => {
+      const newNotificationRef = notificationsRef.doc();
+      notificationsBatch.set(newNotificationRef, {
+        type: 'cuti_request',
+        cutiId: cutiRef.id,
+        userId: adminUid,
+        message: `Permintaan cuti ${jenis} dari ${userData.nama || currentUser.email} pada ${tanggal}`,
+        timestamp: getServerTime(),
+        read: false
+      });
     });
     
+    await notificationsBatch.commit();
     return true;
   } catch (error) {
     console.error('Error submitting cuti request:', error);
@@ -428,8 +437,8 @@ function exportToCSV(data, filename) {
   document.body.removeChild(link);
 }
 
-// Send announcement
-async function sendAnnouncement(target, message) {
+// Send announcement - PERBAIKAN: Pastikan notifikasi dikirim ke karyawan
+async function sendAnnouncement(target, message, specificUsers = []) {
   try {
     let targetUsers = [];
     
@@ -437,7 +446,7 @@ async function sendAnnouncement(target, message) {
       // Get all karyawan UIDs
       targetUsers = KARYAWAN_UIDS;
     } else {
-      targetUsers = [target];
+      targetUsers = specificUsers;
     }
     
     // Create notification for each target user
@@ -448,14 +457,27 @@ async function sendAnnouncement(target, message) {
       const newNotificationRef = notificationsRef.doc();
       batch.set(newNotificationRef, {
         type: 'announcement',
-        message,
+        message: message,
         timestamp: getServerTime(),
         read: false,
-        userId: uid
+        userId: uid,
+        from: currentUser.uid,
+        fromName: userData.nama || currentUser.email
       });
     });
     
     await batch.commit();
+    
+    // Tambahkan juga ke collection announcements untuk riwayat
+    await db.collection('announcements').add({
+      message: message,
+      target: target,
+      specificUsers: target === 'specific' ? specificUsers : [],
+      timestamp: getServerTime(),
+      from: currentUser.uid,
+      fromName: userData.nama || currentUser.email
+    });
+    
     return true;
   } catch (error) {
     console.error('Error sending announcement:', error);
@@ -495,34 +517,68 @@ async function markNotificationAsRead(notificationId) {
   }
 }
 
-// Set custom time rules
-async function setCustomTimeRules(target, rules) {
+// Set custom time rules - PERBAIKAN: Gunakan penargetan UID
+async function setCustomTimeRules(target, rules, specificUsers = []) {
   try {
+    let targetUsers = [];
+    
     if (target === 'all') {
       // Apply to all karyawan
-      const batch = db.batch();
-      const rulesRef = db.collection('time_rules');
-      
-      KARYAWAN_UIDS.forEach(uid => {
-        const userRulesRef = rulesRef.doc(uid);
-        batch.set(userRulesRef, {
-          ...rules,
-          updatedAt: getServerTime()
-        });
-      });
-      
-      await batch.commit();
+      targetUsers = KARYAWAN_UIDS;
     } else {
-      // Apply to specific user
-      await db.collection('time_rules').doc(target).set({
-        ...rules,
-        updatedAt: getServerTime()
-      });
+      targetUsers = specificUsers;
     }
     
+    // Create/update time rules for each target user
+    const batch = db.batch();
+    const rulesRef = db.collection('time_rules');
+    
+    targetUsers.forEach(uid => {
+      const userRulesRef = rulesRef.doc(uid);
+      batch.set(userRulesRef, {
+        ...rules,
+        updatedAt: getServerTime(),
+        updatedBy: currentUser.uid
+      });
+    });
+    
+    await batch.commit();
     return true;
   } catch (error) {
     console.error('Error setting custom time rules:', error);
+    return false;
+  }
+}
+
+// Set OVD rules - PERBAIKAN: Gunakan penargetan UID
+async function setOvdRules(target, setting, specificUsers = []) {
+  try {
+    let targetUsers = [];
+    
+    if (target === 'all') {
+      // Apply to all karyawan
+      targetUsers = KARYAWAN_UIDS;
+    } else {
+      targetUsers = specificUsers;
+    }
+    
+    // Create/update OVD rules for each target user
+    const batch = db.batch();
+    const ovdRef = db.collection('ovd_rules');
+    
+    targetUsers.forEach(uid => {
+      const userOvdRef = ovdRef.doc(uid);
+      batch.set(userOvdRef, {
+        value: setting,
+        updatedAt: getServerTime(),
+        updatedBy: currentUser.uid
+      });
+    });
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error('Error setting OVD rules:', error);
     return false;
   }
 }
@@ -539,6 +595,113 @@ async function loadCustomTimeRules() {
   } catch (error) {
     console.error('Error loading custom time rules:', error);
     return {};
+  }
+}
+
+// Load all users
+async function loadAllUsers() {
+  try {
+    const snapshot = await db.collection('users').get();
+    allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return allUsers;
+  } catch (error) {
+    console.error('Error loading users:', error);
+    return [];
+  }
+}
+
+// Load cuti requests
+async function loadCutiRequests() {
+  try {
+    const snapshot = await db.collection('cuti_requests')
+      .where('status', '==', 'pending')
+      .orderBy('timestamp', 'desc')
+      .get();
+    
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error loading cuti requests:', error);
+    return [];
+  }
+}
+
+// Update cuti request status
+async function updateCutiRequest(requestId, status) {
+  try {
+    await db.collection('cuti_requests').doc(requestId).update({
+      status: status,
+      reviewedAt: getServerTime(),
+      reviewedBy: currentUser.uid
+    });
+    
+    // Get the request to send notification
+    const requestDoc = await db.collection('cuti_requests').doc(requestId).get();
+    const request = requestDoc.data();
+    
+    // Send notification to user
+    await db.collection('notifications').add({
+      type: 'cuti_response',
+      userId: request.userId,
+      message: `Pengajuan cuti Anda ${status === 'approved' ? 'disetujui' : 'ditolak'}`,
+      timestamp: getServerTime(),
+      read: false
+    });
+    
+    // If approved, create CUTIDS records
+    if (status === 'approved') {
+      const cutiDate = new Date(request.tanggal);
+      
+      // Create CUTIDS record for berangkat
+      await db.collection('presences').add({
+        userId: request.userId,
+        userName: request.userName,
+        jenis: 'berangkat',
+        status: `cuti:${request.jenis}`,
+        timestamp: new Date(cutiDate.setHours(6, 0, 0)), // 6 AM
+        coordinates: null,
+        imageUrl: null
+      });
+      
+      // Create CUTIDS record for pulang
+      await db.collection('presences').add({
+        userId: request.userId,
+        userName: request.userName,
+        jenis: 'pulang',
+        status: `cuti:${request.jenis}`,
+        timestamp: new Date(cutiDate.setHours(15, 0, 0)), // 3 PM
+        coordinates: null,
+        imageUrl: null
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating cuti request:', error);
+    return false;
+  }
+}
+
+// Create new user
+async function createUser(email, password) {
+  try {
+    // Create user in Firebase Auth
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+    
+    // Create user profile in Firestore
+    await db.collection('users').doc(user.uid).set({
+      email: email,
+      nama: email.split('@')[0],
+      alamat: '',
+      role: 'karyawan',
+      photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${email}&backgroundColor=ffb300,ffd54f&radius=20`,
+      createdAt: getServerTime()
+    });
+    
+    return user;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
   }
 }
 
@@ -623,6 +786,58 @@ function updatePresenceStatus() {
   }
 }
 
+// Render user list for selection
+function renderUserList(containerId, selectedArray) {
+  const container = $(containerId);
+  container.innerHTML = '';
+  
+  allUsers.forEach(user => {
+    if (KARYAWAN_UIDS.includes(user.id)) {
+      const userItem = document.createElement('div');
+      userItem.className = `user-item ${selectedArray.includes(user.id) ? 'selected' : ''}`;
+      userItem.innerHTML = `
+        <input type="checkbox" id="user-${user.id}" value="${user.id}" 
+               ${selectedArray.includes(user.id) ? 'checked' : ''}
+               onchange="toggleUserSelection('${user.id}', this.checked, '${containerId}')">
+        <label for="user-${user.id}">
+          <strong>${user.nama || user.email}</strong><br>
+          <small>${user.id}</small>
+        </label>
+      `;
+      container.appendChild(userItem);
+    }
+  });
+}
+
+// Fungsi untuk toggle seleksi user
+function toggleUserSelection(userId, isSelected, containerId) {
+  if (containerId === '#ovdUserList') {
+    if (isSelected) {
+      if (!selectedOvdUsers.includes(userId)) {
+        selectedOvdUsers.push(userId);
+      }
+    } else {
+      selectedOvdUsers = selectedOvdUsers.filter(id => id !== userId);
+    }
+  } else if (containerId === '#announceUserList') {
+    if (isSelected) {
+      if (!selectedAnnounceUsers.includes(userId)) {
+        selectedAnnounceUsers.push(userId);
+      }
+    } else {
+      selectedAnnounceUsers = selectedAnnounceUsers.filter(id => id !== userId);
+    }
+  } else if (containerId === '#rulesUserList') {
+    if (isSelected) {
+      if (!selectedRulesUsers.includes(userId)) {
+        selectedRulesUsers.push(userId);
+      }
+    } else {
+      selectedRulesUsers = selectedRulesUsers.filter(id => id !== userId);
+    }
+  }
+}
+
 // Initialize the application
 async function initApp() {
   try {
@@ -656,6 +871,11 @@ async function initApp() {
         if (isKaryawan(user.uid)) {
           initPresenceStatusChecker();
         }
+        
+        // Load all users for admin features
+        if (isAdmin(user.uid)) {
+          await loadAllUsers();
+        }
       } else {
         // Not signed in, redirect to login
         if (!window.location.pathname.endsWith('index.html')) {
@@ -671,3 +891,8 @@ async function initApp() {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
+
+// Global variables for user selection (used in admin.html)
+let selectedOvdUsers = [];
+let selectedAnnounceUsers = [];
+let selectedRulesUsers = [];
