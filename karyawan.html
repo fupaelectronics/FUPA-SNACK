@@ -298,6 +298,12 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // UID admin
+    const ADMIN_UIDS = [
+      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+    ];
+
     // UID karyawan
     const KARYAWAN_UIDS = [
       "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
@@ -403,7 +409,7 @@
 
     // Compress image to 25KB and remove EXIF data
     async function compressImage(blob) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) {
         const img = new Image();
         img.onload = function () {
           const canvas = document.createElement('canvas');
@@ -581,10 +587,11 @@
       }
     }
 
-    // Submit cuti request
+    // Submit cuti request - PERBAIKAN: Kirim notifikasi ke semua admin
     async function submitCutiRequest(jenis, tanggal, catatan) {
       try {
-        await db.collection('cuti_requests').add({
+        // Buat permintaan cuti
+        const cutiRef = await db.collection('cuti_requests').add({
           userId: currentUser.uid,
           userName: userData.nama || currentUser.email,
           jenis,
@@ -594,16 +601,23 @@
           timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
         
-        // Send notification to admin
-        await db.collection('notifications').add({
-          type: 'cuti_request',
-          userId: currentUser.uid,
-          userName: userData.nama || currentUser.email,
-          message: `Pengajuan cuti ${jenis} pada ${tanggal}`,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-          read: false
+        // Kirim notifikasi ke semua admin
+        const notificationsBatch = db.batch();
+        const notificationsRef = db.collection('notifications');
+        
+        ADMIN_UIDS.forEach(adminUid => {
+          const newNotificationRef = notificationsRef.doc();
+          notificationsBatch.set(newNotificationRef, {
+            type: 'cuti_request',
+            cutiId: cutiRef.id,
+            userId: adminUid,
+            message: `Permintaan cuti ${jenis} dari ${userData.nama || currentUser.email} pada ${tanggal}`,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            read: false
+          });
         });
         
+        await notificationsBatch.commit();
         return true;
       } catch (error) {
         console.error('Error submitting cuti request:', error);
@@ -1028,7 +1042,7 @@
         $('#cutiDlg').showModal();
       });
       
-      // Submit cuti
+      // Submit cuti - PERBAIKAN: Pastikan notifikasi dikirim ke admin
       $('#ajukanCutiBtn').addEventListener('click', async () => {
         const jenis = $('#cutiJenis').value;
         const tanggal = $('#cutiTanggal').value;
