@@ -1,0 +1,13 @@
+{
+  "name": "fupa-snack",
+  "version": "1.0.0",
+  "description": "Sistem presensi digital FUPA Snack",
+  "main": "app.js",
+  "scripts": {
+    "build": "echo 'No build process needed'",
+    "test": "echo 'No tests specified'"
+  },
+  "keywords": ["presensi", "firebase", "cloudinary"],
+  "author": "FUPA Snack Team",
+  "license": "ISC"
+}
