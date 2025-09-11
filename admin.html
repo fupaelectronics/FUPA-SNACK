@@ -120,9 +120,11 @@
       margin-top: 8px;
     }
     .user-item {
-      padding: 6px 8px;
+      padding: 10px;
+      border-bottom: 1px solid #eee;
       cursor: pointer;
-      border-radius: 4px;
+      display: flex;
+      align-items: center;
     }
     .user-item:hover {
       background-color: #f5f5f5;
@@ -130,6 +132,23 @@
     .user-item.selected {
       background-color: #FFD54F;
       color: #222;
+    }
+    .user-item input[type="checkbox"] {
+      margin-right: 10px;
+    }
+    .user-item label {
+      cursor: pointer;
+      flex: 1;
+    }
+    .user-item small {
+      opacity: 0.7;
+      font-size: 0.8em;
+    }
+    .custom-date-range {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -180,7 +199,7 @@
               <option value="custom">Periode Kustom</option>
             </select>
           </div>
-          <div class="filter-item" id="customDateRange" style="display:none">
+          <div id="customDateRange" class="custom-date-range" style="display:none">
             <input id="fDari" type="date" class="filter-input" />
             <span>s/d</span>
             <input id="fSampai" type="date" class="filter-input" />
@@ -215,6 +234,8 @@
 
       <section class="card">
         <h3 style="margin:0 0 8px">Pengaturan & pengumuman</h3>
+        
+        <!-- OVD System -->
         <div class="row">
           <div class="input">
             <span class="material-symbols-rounded">event_busy</span>
@@ -224,12 +245,28 @@
               <option value="forceOff">Paksa tidak wajib presensi hari ini</option>
             </select>
           </div>
-          <button id="saveSchedule" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+          <div class="input">
+            <span class="material-symbols-rounded">person</span>
+            <select id="ovdTarget">
+              <option value="all">Semua Karyawan</option>
+              <option value="specific">Karyawan Tertentu</option>
+            </select>
+          </div>
+          <button id="saveOvd" class="btn"><span class="material-symbols-rounded">save</span> Simpan OVD</button>
         </div>
+        
+        <div id="ovdUserSelection" style="display:none; margin-top:10px">
+          <h4>Pilih Karyawan untuk OVD:</h4>
+          <div class="user-list" id="ovdUserList"></div>
+        </div>
+
+        <!-- PAG System -->
         <div class="row" style="margin-top:10px">
           <div class="input" style="flex:1"><span class="material-symbols-rounded">campaign</span>
             <textarea id="announceText" placeholder="Tulis pengumuman untuk karyawan" rows="3" style="width:100%"></textarea>
           </div>
+        </div>
+        <div class="row" style="margin-top:10px">
           <div class="input">
             <span class="material-symbols-rounded">person</span>
             <select id="announceTarget">
@@ -239,14 +276,15 @@
           </div>
           <button id="sendAnnounce" class="btn"><span class="material-symbols-rounded">send</span> Kirim</button>
         </div>
-        <div id="userSelection" style="display:none; margin-top:10px">
-          <div class="user-list" id="userList"></div>
+        <div id="announceUserSelection" style="display:none; margin-top:10px">
+          <h4>Pilih Karyawan untuk Pengumuman:</h4>
+          <div class="user-list" id="announceUserList"></div>
         </div>
       </section>
     </div>
   </div>
 
-  <!-- FAB pengumuman cepat -->
+  <!-- FAB Time Rules -->
   <button class="fab" id="timeRulesFab" title="Aturan Waktu">
     <span class="material-symbols-rounded">schedule</span>
   </button>
@@ -310,6 +348,7 @@
       </div>
       
       <div id="rulesUserSelection" style="display:none; margin-top:10px">
+        <h4>Pilih Karyawan untuk Aturan Waktu:</h4>
         <div class="user-list" id="rulesUserList"></div>
       </div>
       
@@ -389,7 +428,8 @@
     let currentUser = null;
     let userData = null;
     let allUsers = [];
-    let selectedUsers = [];
+    let selectedOvdUsers = [];
+    let selectedAnnounceUsers = [];
     let selectedRulesUsers = [];
 
     // Utility functions
@@ -549,7 +589,6 @@
         let query = db.collection('presences').orderBy('timestamp', 'desc');
         
         if (filters.nama) {
-          // This would need an index for searching by name
           query = query.where('userName', '>=', filters.nama)
                        .where('userName', '<=', filters.nama + '\uf8ff');
         }
@@ -658,7 +697,7 @@
       }
     }
 
-    // Send announcement
+    // Send announcement - PERBAIKAN: Pastikan notifikasi dikirim ke karyawan
     async function sendAnnouncement(target, message, specificUsers = []) {
       try {
         let targetUsers = [];
@@ -688,6 +727,17 @@
         });
         
         await batch.commit();
+        
+        // Tambahkan juga ke collection announcements untuk riwayat
+        await db.collection('announcements').add({
+          message: message,
+          target: target,
+          specificUsers: target === 'specific' ? specificUsers : [],
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          from: currentUser.uid,
+          fromName: userData.nama || currentUser.email
+        });
+        
         return true;
       } catch (error) {
         console.error('Error sending announcement:', error);
@@ -724,6 +774,39 @@
         return true;
       } catch (error) {
         console.error('Error setting custom time rules:', error);
+        return false;
+      }
+    }
+
+    // Set OVD rules
+    async function setOvdRules(target, setting, specificUsers = []) {
+      try {
+        let targetUsers = [];
+        
+        if (target === 'all') {
+          // Apply to all karyawan
+          targetUsers = KARYAWAN_UIDS;
+        } else {
+          targetUsers = specificUsers;
+        }
+        
+        // Create/update OVD rules for each target user
+        const batch = db.batch();
+        const ovdRef = db.collection('ovd_rules');
+        
+        targetUsers.forEach(uid => {
+          const userOvdRef = ovdRef.doc(uid);
+          batch.set(userOvdRef, {
+            value: setting,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser.uid
+          });
+        });
+        
+        await batch.commit();
+        return true;
+      } catch (error) {
+        console.error('Error setting OVD rules:', error);
         return false;
       }
     }
@@ -995,22 +1078,47 @@
         if (KARYAWAN_UIDS.includes(user.id)) {
           const userItem = document.createElement('div');
           userItem.className = `user-item ${selectedArray.includes(user.id) ? 'selected' : ''}`;
-          userItem.textContent = user.nama || user.email;
-          userItem.setAttribute('data-id', user.id);
-          
-          userItem.addEventListener('click', () => {
-            const index = selectedArray.indexOf(user.id);
-            if (index === -1) {
-              selectedArray.push(user.id);
-            } else {
-              selectedArray.splice(index, 1);
-            }
-            userItem.classList.toggle('selected');
-          });
-          
+          userItem.innerHTML = `
+            <input type="checkbox" id="user-${user.id}" value="${user.id}" 
+                   ${selectedArray.includes(user.id) ? 'checked' : ''}
+                   onchange="toggleUserSelection('${user.id}', this.checked, '${containerId}')">
+            <label for="user-${user.id}">
+              <strong>${user.nama || user.email}</strong><br>
+              <small>${user.id}</small>
+            </label>
+          `;
           container.appendChild(userItem);
         }
       });
+    }
+
+    // Fungsi untuk toggle seleksi user
+    function toggleUserSelection(userId, isSelected, containerId) {
+      if (containerId === '#ovdUserList') {
+        if (isSelected) {
+          if (!selectedOvdUsers.includes(userId)) {
+            selectedOvdUsers.push(userId);
+          }
+        } else {
+          selectedOvdUsers = selectedOvdUsers.filter(id => id !== userId);
+        }
+      } else if (containerId === '#announceUserList') {
+        if (isSelected) {
+          if (!selectedAnnounceUsers.includes(userId)) {
+            selectedAnnounceUsers.push(userId);
+          }
+        } else {
+          selectedAnnounceUsers = selectedAnnounceUsers.filter(id => id !== userId);
+        }
+      } else if (containerId === '#rulesUserList') {
+        if (isSelected) {
+          if (!selectedRulesUsers.includes(userId)) {
+            selectedRulesUsers.push(userId);
+          }
+        } else {
+          selectedRulesUsers = selectedRulesUsers.filter(id => id !== userId);
+        }
+      }
     }
 
     // Event listeners
@@ -1149,13 +1257,52 @@
         $('#notifDlg').showModal();
       });
       
+      // OVD target change
+      $('#ovdTarget').addEventListener('change', () => {
+        const target = $('#ovdTarget').value;
+        $('#ovdUserSelection').style.display = target === 'specific' ? 'block' : 'none';
+        
+        if (target === 'specific') {
+          renderUserList('#ovdUserList', selectedOvdUsers);
+        }
+      });
+      
+      // Save OVD
+      $('#saveOvd').addEventListener('click', async () => {
+        const setting = $('#wajibHari').value;
+        const target = $('#ovdTarget').value;
+        
+        $('#saveOvd').disabled = true;
+        $('#saveOvd').innerHTML = '<span class="spinner"></span> Menyimpan...';
+        
+        try {
+          const success = await setOvdRules(
+            target, 
+            setting, 
+            target === 'specific' ? selectedOvdUsers : []
+          );
+          
+          if (success) {
+            toast('Pengaturan OVD berhasil disimpan', 'success');
+          } else {
+            toast('Gagal menyimpan pengaturan OVD', 'error');
+          }
+        } catch (error) {
+          console.error('Error saving OVD settings:', error);
+          toast('Gagal menyimpan pengaturan OVD', 'error');
+        } finally {
+          $('#saveOvd').disabled = false;
+          $('#saveOvd').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan OVD';
+        }
+      });
+      
       // Announce target change
       $('#announceTarget').addEventListener('change', () => {
         const target = $('#announceTarget').value;
-        $('#userSelection').style.display = target === 'specific' ? 'block' : 'none';
+        $('#announceUserSelection').style.display = target === 'specific' ? 'block' : 'none';
         
         if (target === 'specific') {
-          renderUserList('#userList', selectedUsers);
+          renderUserList('#announceUserList', selectedAnnounceUsers);
         }
       });
       
@@ -1176,15 +1323,15 @@
           const success = await sendAnnouncement(
             target, 
             message, 
-            target === 'specific' ? selectedUsers : []
+            target === 'specific' ? selectedAnnounceUsers : []
           );
           
           if (success) {
             toast('Pengumuman berhasil dikirim', 'success');
             $('#announceText').value = '';
             $('#announceTarget').value = 'all';
-            $('#userSelection').style.display = 'none';
-            selectedUsers = [];
+            $('#announceUserSelection').style.display = 'none';
+            selectedAnnounceUsers = [];
           } else {
             toast('Gagal mengirim pengumuman', 'error');
           }
@@ -1230,7 +1377,7 @@
             minute: parseInt(pulang.split(':')[1])
           },
           libur: libur,
-          tolerance: 20 // Default tolerance
+          tolerance: 20
         };
         
         $('#saveRulesBtn').disabled = true;
@@ -1255,25 +1402,6 @@
         } finally {
           $('#saveRulesBtn').disabled = false;
           $('#saveRulesBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan Aturan';
-        }
-      });
-      
-      // Save schedule settings
-      $('#saveSchedule').addEventListener('click', async () => {
-        const setting = $('#wajibHari').value;
-        
-        // Implement OVD system - override presensi rules
-        try {
-          await db.collection('system_settings').doc('ovd').set({
-            value: setting,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser.uid
-          });
-          
-          toast('Pengaturan berhasil disimpan', 'success');
-        } catch (error) {
-          console.error('Error saving schedule settings:', error);
-          toast('Gagal menyimpan pengaturan', 'error');
         }
       });
     });
