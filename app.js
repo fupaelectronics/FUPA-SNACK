@@ -1,6 +1,6 @@
-// app.js - Core Application Logic for Fupa Snack System
+// app.js - Core functionality for Fupa Snack System
 
-// Firebase initialization
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
   authDomain: "fupa-snack.firebaseapp.com",
@@ -10,6 +10,7 @@ const firebaseConfig = {
   appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
 };
 
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -18,7 +19,7 @@ const db = firebase.firestore();
 const cloudinaryCloudName = 'da7idhh4f';
 const cloudinaryUploadPreset = 'FupaSnack';
 
-// User roles definition
+// User roles
 const ADMIN_UIDS = [
   "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
   "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
@@ -33,7 +34,7 @@ const KARYAWAN_UIDS = [
 ];
 
 // Default time rules
-const TIME_RULES = {
+const DEFAULT_TIME_RULES = {
   berangkat: { start: { hour: 5, minute: 30 }, end: { hour: 6, minute: 0 } },
   pulang: { start: { hour: 10, minute: 0 }, end: { hour: 11, minute: 0 } },
   tolerance: 20, // minutes
@@ -43,16 +44,22 @@ const TIME_RULES = {
 // Global variables
 let currentUser = null;
 let userData = null;
-let customRules = {};
-let presenceStatus = null;
+let currentLocation = null;
+let cameraStream = null;
+let capturedBlob = null;
 
 // Utility functions
 const $ = (sel) => document.querySelector(sel);
-const toast = (msg, type = 'info') => {
-  const t = $("#toast");
-  if (!t) return alert(msg);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+function toast(msg, type = 'info') {
+  const t = $("#toast") || document.createElement('div');
+  if (!t.id) {
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);color:#fff;padding:10px 14px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);z-index:10;display:none;';
+    document.body.appendChild(t);
+  }
   
-  // Set background color based on type
   const colors = {
     success: '#2e7d32',
     error: '#c62828',
@@ -64,80 +71,97 @@ const toast = (msg, type = 'info') => {
   t.textContent = msg;
   t.style.display = "block";
   setTimeout(() => { t.style.display = "none"; }, 3000);
-};
-
-// Check if user is admin
-function isAdmin(uid) {
-  return ADMIN_UIDS.includes(uid);
 }
 
-// Check if user is karyawan
-function isKaryawan(uid) {
-  return KARYAWAN_UIDS.includes(uid);
-}
-
-// Get server time from Firebase
-function getServerTime() {
-  return firebase.firestore.FieldValue.serverTimestamp();
-}
-
-// Compress image to 25KB and remove EXIF data
-async function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = function (event) {
-      const img = new Image();
-      img.onload = function () {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Calculate new dimensions maintaining aspect ratio
-        let width = img.width;
-        let height = img.height;
-        const maxDimension = 800; // Max width or height
-        
-        if (width > height) {
-          if (width > maxDimension) {
-            height *= maxDimension / width;
-            width = maxDimension;
-          }
-        } else {
-          if (height > maxDimension) {
-            width *= maxDimension / height;
-            height = maxDimension;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Draw image on canvas
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Get compressed image as blob
-        canvas.toBlob((blob) => {
-          if (blob.size > 25 * 1024) {
-            // Recursively compress if still too large
-            const quality = Math.max(0.1, (25 * 1024) / blob.size * 0.9);
-            canvas.toBlob(
-              (compressedBlob) => resolve(compressedBlob),
-              'image/jpeg',
-              quality
-            );
-          } else {
-            resolve(blob);
-          }
-        }, 'image/jpeg', 0.9);
-      };
-      img.onerror = reject;
-      img.src = event.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+function formatTime(date) {
+  return new Date(date).toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
   });
 }
 
-// Upload image to Cloudinary
+function formatDate(date) {
+  return new Date(date).toLocaleDateString('id-ID', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+function formatDateTime(date) {
+  return `${formatDate(date)} - ${formatTime(date)}`;
+}
+
+function getDayName(dayIndex) {
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  return days[dayIndex];
+}
+
+// Authentication functions
+function redirectByRole(uid) {
+  if (ADMIN_UIDS.includes(uid)) {
+    return "admin.html";
+  } else if (KARYAWAN_UIDS.includes(uid)) {
+    return "karyawan.html";
+  } else {
+    auth.signOut();
+    return null;
+  }
+}
+
+// Image compression and upload functions
+async function compressImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Calculate new dimensions maintaining aspect ratio
+      let width = img.width;
+      let height = img.height;
+      const maxDimension = 800;
+      
+      if (width > height) {
+        if (width > maxDimension) {
+          height *= maxDimension / width;
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width *= maxDimension / height;
+          height = maxDimension;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Draw image on canvas
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Get compressed image as blob
+      canvas.toBlob((compressedBlob) => {
+        if (compressedBlob.size > 25 * 1024) {
+          // Recursively compress if still too large
+          const quality = Math.max(0.1, (25 * 1024) / compressedBlob.size * 0.9);
+          canvas.toBlob(
+            (finalBlob) => resolve(finalBlob),
+            'image/jpeg',
+            quality
+          );
+        } else {
+          resolve(compressedBlob);
+        }
+      }, 'image/jpeg', 0.9);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
 async function uploadToCloudinary(blob) {
   const formData = new FormData();
   formData.append('file', blob);
@@ -158,63 +182,7 @@ async function uploadToCloudinary(blob) {
   }
 }
 
-// Check if today is Sunday
-function isSunday() {
-  return new Date().getDay() === 0;
-}
-
-// Check if current time is within presensi session
-function checkPresensiSession(jenis) {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTime = currentHour * 60 + currentMinute;
-  
-  // Get rules for current user (custom or default)
-  const rules = customRules[currentUser.uid] || TIME_RULES;
-  
-  if (isSunday() && !rules.forceWork) {
-    return { inSession: false, status: 'libur' };
-  }
-  
-  const session = rules[jenis];
-  if (!session) {
-    return { inSession: false, status: 'tidak tersedia' };
-  }
-  
-  const startTime = session.start.hour * 60 + session.start.minute;
-  const endTime = session.end.hour * 60 + session.end.minute;
-  const toleranceEnd = endTime + rules.tolerance;
-  
-  if (currentTime >= startTime && currentTime <= endTime) {
-    return { inSession: true, status: 'tepat waktu' };
-  } else if (currentTime > endTime && currentTime <= toleranceEnd) {
-    return { inSession: true, status: 'terlambat' };
-  } else {
-    return { inSession: false, status: 'diluar sesi' };
-  }
-}
-
-// Record presence to Firestore
-async function recordPresence(jenis, status, coordinates, imageUrl) {
-  try {
-    await db.collection('presences').add({
-      userId: currentUser.uid,
-      userName: userData.nama || currentUser.email,
-      jenis,
-      status,
-      coordinates,
-      imageUrl,
-      timestamp: getServerTime()
-    });
-    return true;
-  } catch (error) {
-    console.error('Error recording presence:', error);
-    return false;
-  }
-}
-
-// Get user's current location
+// Location functions
 function getCurrentLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -236,17 +204,19 @@ function getCurrentLocation() {
   });
 }
 
-// Initialize camera
-async function initCamera() {
+// Camera functions
+async function initCamera(videoElement) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: 'user' }, 
       audio: false 
     });
-    const videoElement = $('#cam');
+    
     if (videoElement) {
       videoElement.srcObject = stream;
     }
+    
+    cameraStream = stream;
     return stream;
   } catch (error) {
     console.error('Error accessing camera:', error);
@@ -255,22 +225,60 @@ async function initCamera() {
   }
 }
 
-// Capture image from camera
-function captureImage(videoElement) {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
+function captureImage(videoElement, canvasElement) {
+  if (!videoElement || !canvasElement) return null;
   
-  canvas.width = videoElement.videoWidth;
-  canvas.height = videoElement.videoHeight;
+  const context = canvasElement.getContext('2d');
+  canvasElement.width = videoElement.videoWidth;
+  canvasElement.height = videoElement.videoHeight;
   
-  context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
   
   return new Promise((resolve) => {
-    canvas.toBlob(resolve, 'image/jpeg', 0.9);
+    canvasElement.toBlob(resolve, 'image/jpeg', 0.9);
   });
 }
 
-// Load user profile
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+}
+
+// Time and session checking functions
+function checkPresensiSession(jenis, customRules = null) {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTime = currentHour * 60 + currentMinute;
+  
+  const rules = customRules || DEFAULT_TIME_RULES;
+  const session = rules[jenis];
+  
+  if (!session) {
+    return { inSession: false, status: 'tidak tersedia' };
+  }
+  
+  const startTime = session.start.hour * 60 + session.start.minute;
+  const endTime = session.end.hour * 60 + session.end.minute;
+  const toleranceEnd = endTime + rules.tolerance;
+  
+  // Check if it's Sunday (libur)
+  if (now.getDay() === 0) {
+    return { inSession: false, status: 'libur' };
+  }
+  
+  if (currentTime >= startTime && currentTime <= endTime) {
+    return { inSession: true, status: 'tepat waktu' };
+  } else if (currentTime > endTime && currentTime <= toleranceEnd) {
+    return { inSession: true, status: 'terlambat' };
+  } else {
+    return { inSession: false, status: 'diluar sesi' };
+  }
+}
+
+// User profile functions
 async function loadUserProfile(uid) {
   try {
     const doc = await db.collection('users').doc(uid).get();
@@ -293,7 +301,6 @@ async function loadUserProfile(uid) {
   }
 }
 
-// Update user profile
 async function updateUserProfile(uid, updates) {
   try {
     await db.collection('users').doc(uid).update(updates);
@@ -305,37 +312,25 @@ async function updateUserProfile(uid, updates) {
   }
 }
 
-// Submit cuti request
-async function submitCutiRequest(jenis, tanggal, catatan) {
+// Presence functions
+async function recordPresence(userId, userName, jenis, status, coordinates, imageUrl) {
   try {
-    await db.collection('cuti_requests').add({
-      userId: currentUser.uid,
-      userName: userData.nama || currentUser.email,
+    await db.collection('presences').add({
+      userId,
+      userName,
       jenis,
-      tanggal,
-      catatan,
-      status: 'pending',
-      timestamp: getServerTime()
+      status,
+      coordinates,
+      imageUrl,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
-    
-    // Send notification to admin
-    await db.collection('notifications').add({
-      type: 'cuti_request',
-      userId: currentUser.uid,
-      userName: userData.nama || currentUser.email,
-      message: `Pengajuan cuti ${jenis} pada ${tanggal}`,
-      timestamp: getServerTime(),
-      read: false
-    });
-    
     return true;
   } catch (error) {
-    console.error('Error submitting cuti request:', error);
+    console.error('Error recording presence:', error);
     return false;
   }
 }
 
-// Load presence history
 async function loadPresenceHistory(uid, limit = 20) {
   try {
     let query = db.collection('presences')
@@ -354,24 +349,26 @@ async function loadPresenceHistory(uid, limit = 20) {
   }
 }
 
-// Load all presence data for admin
 async function loadAllPresenceHistory(filters = {}) {
   try {
     let query = db.collection('presences').orderBy('timestamp', 'desc');
     
     if (filters.nama) {
-      // This would need an index for searching by name
       query = query.where('userName', '>=', filters.nama)
                    .where('userName', '<=', filters.nama + '\uf8ff');
     }
     
-    if (filters.tanggal) {
-      const startDate = new Date(filters.tanggal);
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
+    if (filters.startDate && filters.endDate) {
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      end.setDate(end.getDate() + 1); // Include the end date
       
-      query = query.where('timestamp', '>=', startDate)
-                   .where('timestamp', '<', endDate);
+      query = query.where('timestamp', '>=', start)
+                   .where('timestamp', '<=', end);
+    }
+    
+    if (filters.limit && filters.limit !== 'all') {
+      query = query.limit(parseInt(filters.limit));
     }
     
     const snapshot = await query.get();
@@ -382,7 +379,248 @@ async function loadAllPresenceHistory(filters = {}) {
   }
 }
 
-// Export to CSV with STDR format
+// Cuti functions
+async function submitCutiRequest(userId, userName, jenis, tanggal, catatan) {
+  try {
+    await db.collection('cuti_requests').add({
+      userId,
+      userName,
+      jenis,
+      tanggal,
+      catatan,
+      status: 'pending',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    // Send notification to admin
+    await db.collection('notifications').add({
+      type: 'cuti_request',
+      userId,
+      userName,
+      message: `Pengajuan cuti ${jenis} pada ${tanggal}`,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      read: false
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error submitting cuti request:', error);
+    return false;
+  }
+}
+
+async function loadCutiRequests() {
+  try {
+    const snapshot = await db.collection('cuti_requests')
+      .where('status', '==', 'pending')
+      .orderBy('timestamp', 'desc')
+      .get();
+    
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error loading cuti requests:', error);
+    return [];
+  }
+}
+
+async function updateCutiRequest(requestId, status) {
+  try {
+    await db.collection('cuti_requests').doc(requestId).update({
+      status: status,
+      reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      reviewedBy: currentUser.uid
+    });
+    
+    // Get the request to send notification
+    const requestDoc = await db.collection('cuti_requests').doc(requestId).get();
+    const request = requestDoc.data();
+    
+    // Send notification to user
+    await db.collection('notifications').add({
+      type: 'cuti_response',
+      userId: request.userId,
+      message: `Pengajuan cuti Anda ${status === 'approved' ? 'disetujui' : 'ditolak'}`,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      read: false
+    });
+    
+    // If approved, create CUTIDS records
+    if (status === 'approved') {
+      const cutiDate = new Date(request.tanggal);
+      
+      // Create CUTIDS record for berangkat
+      await db.collection('presences').add({
+        userId: request.userId,
+        userName: request.userName,
+        jenis: 'berangkat',
+        status: `cuti:${request.jenis}`,
+        timestamp: new Date(cutiDate.setHours(6, 0, 0)), // 6 AM
+        coordinates: null,
+        imageUrl: null
+      });
+      
+      // Create CUTIDS record for pulang
+      await db.collection('presences').add({
+        userId: request.userId,
+        userName: request.userName,
+        jenis: 'pulang',
+        status: `cuti:${request.jenis}`,
+        timestamp: new Date(cutiDate.setHours(15, 0, 0)), // 3 PM
+        coordinates: null,
+        imageUrl: null
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating cuti request:', error);
+    return false;
+  }
+}
+
+// Notification functions
+async function loadNotifications(uid, limit = 20) {
+  try {
+    let query = db.collection('notifications')
+      .where('userId', '==', uid)
+      .orderBy('timestamp', 'desc');
+    
+    if (limit !== 'all') {
+      query = query.limit(parseInt(limit));
+    }
+    
+    const snapshot = await query.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error loading notifications:', error);
+    return [];
+  }
+}
+
+async function markNotificationAsRead(notificationId) {
+  try {
+    await db.collection('notifications').doc(notificationId).update({
+      read: true
+    });
+    return true;
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    return false;
+  }
+}
+
+// Announcement functions
+async function sendAnnouncement(target, message, specificUsers = []) {
+  try {
+    let targetUsers = [];
+    
+    if (target === 'all') {
+      // Get all karyawan UIDs
+      targetUsers = KARYAWAN_UIDS;
+    } else {
+      targetUsers = specificUsers;
+    }
+    
+    // Create notification for each target user
+    const batch = db.batch();
+    const notificationsRef = db.collection('notifications');
+    
+    targetUsers.forEach(uid => {
+      const newNotificationRef = notificationsRef.doc();
+      batch.set(newNotificationRef, {
+        type: 'announcement',
+        message: message,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        read: false,
+        userId: uid,
+        from: currentUser.uid,
+        fromName: userData.nama || currentUser.email
+      });
+    });
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error('Error sending announcement:', error);
+    return false;
+  }
+}
+
+// Time rules functions
+async function setCustomTimeRules(target, rules, specificUsers = []) {
+  try {
+    let targetUsers = [];
+    
+    if (target === 'all') {
+      // Apply to all karyawan
+      targetUsers = KARYAWAN_UIDS;
+    } else {
+      targetUsers = specificUsers;
+    }
+    
+    // Create/update time rules for each target user
+    const batch = db.batch();
+    const rulesRef = db.collection('time_rules');
+    
+    targetUsers.forEach(uid => {
+      const userRulesRef = rulesRef.doc(uid);
+      batch.set(userRulesRef, {
+        ...rules,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: currentUser.uid
+      });
+    });
+    
+    await batch.commit();
+    return true;
+  } catch (error) {
+    console.error('Error setting custom time rules:', error);
+    return false;
+  }
+}
+
+async function getCustomTimeRules(uid) {
+  try {
+    const doc = await db.collection('time_rules').doc(uid).get();
+    if (doc.exists) {
+      return doc.data();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting custom time rules:', error);
+    return null;
+  }
+}
+
+// OVD functions (Override presensi rules)
+async function setOVDSetting(setting) {
+  try {
+    await db.collection('system_settings').doc('ovd').set({
+      value: setting,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser.uid
+    });
+    return true;
+  } catch (error) {
+    console.error('Error setting OVD:', error);
+    return false;
+  }
+}
+
+async function getOVDSetting() {
+  try {
+    const doc = await db.collection('system_settings').doc('ovd').get();
+    if (doc.exists) {
+      return doc.data().value;
+    }
+    return 'auto'; // Default value
+  } catch (error) {
+    console.error('Error getting OVD setting:', error);
+    return 'auto';
+  }
+}
+
+// CSV export functions
 function exportToCSV(data, filename) {
   // Group data by user name
   const groupedData = {};
@@ -428,246 +666,183 @@ function exportToCSV(data, filename) {
   document.body.removeChild(link);
 }
 
-// Send announcement
-async function sendAnnouncement(target, message) {
+// User management functions
+async function createUser(email, password) {
   try {
-    let targetUsers = [];
+    // Create user in Firebase Auth
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
     
-    if (target === 'all') {
-      // Get all karyawan UIDs
-      targetUsers = KARYAWAN_UIDS;
-    } else {
-      targetUsers = [target];
+    // Create user profile in Firestore
+    await db.collection('users').doc(user.uid).set({
+      email: email,
+      nama: email.split('@')[0],
+      alamat: '',
+      role: 'karyawan',
+      photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${email}&backgroundColor=ffb300,ffd54f&radius=20`,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    return user;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+}
+
+// Auto ALPA system (to be called by cron job)
+async function checkAndRecordAlpa() {
+  try {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTime = currentHour * 60 + currentMinute;
+    
+    // Check if it's Sunday
+    if (now.getDay() === 0) return;
+    
+    // Get all users
+    const usersSnapshot = await db.collection('users').get();
+    const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Check for each user
+    for (const user of users) {
+      if (!KARYAWAN_UIDS.includes(user.id)) continue;
+      
+      // Check if user has presence records for today
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      
+      const presenceSnapshot = await db.collection('presences')
+        .where('userId', '==', user.id)
+        .where('timestamp', '>=', todayStart)
+        .where('timestamp', '<=', todayEnd)
+        .get();
+      
+      const hasPresence = !presenceSnapshot.empty;
+      
+      // If no presence and it's past tolerance time for pulang, record ALPA
+      if (!hasPresence && currentTime > (DEFAULT_TIME_RULES.pulang.end.hour * 60 + DEFAULT_TIME_RULES.pulang.end.minute + DEFAULT_TIME_RULES.tolerance)) {
+        // Record ALPA for both berangkat and pulang
+        await db.collection('presences').add({
+          userId: user.id,
+          userName: user.nama || user.email,
+          jenis: 'berangkat',
+          status: 'alpa',
+          timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6, 0), // 6 AM
+          coordinates: null,
+          imageUrl: null
+        });
+        
+        await db.collection('presences').add({
+          userId: user.id,
+          userName: user.nama || user.email,
+          jenis: 'pulang',
+          status: 'alpa',
+          timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 0), // 3 PM
+          coordinates: null,
+          imageUrl: null
+        });
+      }
     }
+  } catch (error) {
+    console.error('Error in ALPA system:', error);
+  }
+}
+
+// DELLTE system - Delete old notifications (to be called by cron job)
+async function deleteOldNotifications() {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
-    // Create notification for each target user
+    const notificationsSnapshot = await db.collection('notifications')
+      .where('timestamp', '<=', sevenDaysAgo)
+      .get();
+    
     const batch = db.batch();
-    const notificationsRef = db.collection('notifications');
-    
-    targetUsers.forEach(uid => {
-      const newNotificationRef = notificationsRef.doc();
-      batch.set(newNotificationRef, {
-        type: 'announcement',
-        message,
-        timestamp: getServerTime(),
-        read: false,
-        userId: uid
-      });
+    notificationsSnapshot.forEach(doc => {
+      // Check if notification type should be preserved
+      const data = doc.data();
+      if (!['OCD', 'CUTIDS', 'CSVMD', 'PAG'].includes(data.type)) {
+        batch.delete(doc.ref);
+      }
     });
     
     await batch.commit();
-    return true;
+    console.log('Old notifications deleted successfully');
   } catch (error) {
-    console.error('Error sending announcement:', error);
-    return false;
+    console.error('Error deleting old notifications:', error);
   }
 }
 
-// Load notifications
-async function loadNotifications(uid, limit = 20) {
+// CSVMD system - Monthly CSV export notification (to be called by cron job)
+async function sendMonthlyCSVNotification() {
   try {
-    let query = db.collection('notifications')
-      .where('userId', '==', uid)
-      .orderBy('timestamp', 'desc');
+    const now = new Date();
+    // Check if it's the end of the month and time is 13:00 WIB
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     
-    if (limit !== 'all') {
-      query = query.limit(parseInt(limit));
-    }
-    
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (error) {
-    console.error('Error loading notifications:', error);
-    return [];
-  }
-}
-
-// Mark notification as read
-async function markNotificationAsRead(notificationId) {
-  try {
-    await db.collection('notifications').doc(notificationId).update({
-      read: true
-    });
-    return true;
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    return false;
-  }
-}
-
-// Set custom time rules
-async function setCustomTimeRules(target, rules) {
-  try {
-    if (target === 'all') {
-      // Apply to all karyawan
-      const batch = db.batch();
-      const rulesRef = db.collection('time_rules');
-      
-      KARYAWAN_UIDS.forEach(uid => {
-        const userRulesRef = rulesRef.doc(uid);
-        batch.set(userRulesRef, {
-          ...rules,
-          updatedAt: getServerTime()
+    if (now.getDate() === lastDayOfMonth.getDate() && now.getHours() === 13) {
+      // Send notification to admin
+      for (const adminUid of ADMIN_UIDS) {
+        await db.collection('notifications').add({
+          type: 'CSVMD',
+          userId: adminUid,
+          message: 'Laporan CSV bulanan siap diunduh',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          read: false
         });
-      });
+      }
+    }
+  } catch (error) {
+    console.error('Error in CSVMD system:', error);
+  }
+}
+
+// Initialize the app
+function initApp() {
+  // Check auth state
+  auth.onAuthStateChanged(async function(user) {
+    if (user) {
+      currentUser = user;
+      console.log("User logged in:", user.uid);
       
-      await batch.commit();
+      // Check if user has access
+      if (!ADMIN_UIDS.includes(user.uid) && !KARYAWAN_UIDS.includes(user.uid)) {
+        toast('Akses ditolak. Akun tidak memiliki izin.', 'error');
+        await auth.signOut();
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Load user profile
+      userData = await loadUserProfile(user.uid);
+      
+      // Redirect based on role
+      const currentPage = window.location.pathname.split('/').pop();
+      const redirectPage = redirectByRole(user.uid);
+      
+      if (currentPage === 'index.html' && redirectPage) {
+        window.location.href = redirectPage;
+      } else if (currentPage !== 'index.html' && !redirectPage) {
+        await auth.signOut();
+        window.location.href = 'index.html';
+      }
+      
+      // Initialize page-specific functionality
+      if (typeof initPage === 'function') {
+        initPage(user);
+      }
     } else {
-      // Apply to specific user
-      await db.collection('time_rules').doc(target).set({
-        ...rules,
-        updatedAt: getServerTime()
-      });
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error setting custom time rules:', error);
-    return false;
-  }
-}
-
-// Load custom time rules
-async function loadCustomTimeRules() {
-  try {
-    const snapshot = await db.collection('time_rules').get();
-    const rules = {};
-    snapshot.forEach(doc => {
-      rules[doc.id] = doc.data();
-    });
-    return rules;
-  } catch (error) {
-    console.error('Error loading custom time rules:', error);
-    return {};
-  }
-}
-
-// Initialize presence status checking
-function initPresenceStatusChecker() {
-  // Check every minute
-  setInterval(() => {
-    updatePresenceStatus();
-  }, 60000);
-  
-  // Initial check
-  updatePresenceStatus();
-}
-
-// Update presence status display
-function updatePresenceStatus() {
-  if (!currentUser || isAdmin(currentUser.uid)) return;
-  
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  
-  // Check if it's Sunday
-  if (isSunday() && !(customRules[currentUser.uid] && customRules[currentUser.uid].forceWork)) {
-    presenceStatus = { status: 'libur', text: 'Hari Libur' };
-  } 
-  // Check if it's before berangkat time
-  else if (currentHour < 5 || (currentHour === 5 && currentMinute < 30)) {
-    presenceStatus = { status: 'waiting', text: 'Menunggu Sesi Presensi' };
-  }
-  // Check if it's berangkat session
-  else if (
-    (currentHour === 5 && currentMinute >= 30) || 
-    (currentHour === 6 && currentMinute <= 0)
-  ) {
-    presenceStatus = { status: 'active', text: 'Sesi Presensi Berangkat' };
-  }
-  // Check if it's between sessions
-  else if (
-    (currentHour === 6 && currentMinute > 0) || 
-    currentHour === 7 || currentHour === 8 || currentHour === 9 ||
-    (currentHour === 10 && currentMinute < 0)
-  ) {
-    presenceStatus = { status: 'between', text: 'Di Antara Sesi Presensi' };
-  }
-  // Check if it's pulang session
-  else if (
-    (currentHour === 10 && currentMinute >= 0) || 
-    (currentHour === 11 && currentMinute <= 0)
-  ) {
-    presenceStatus = { status: 'active', text: 'Sesi Presensi Pulang' };
-  }
-  // After pulang session
-  else {
-    presenceStatus = { status: 'ended', text: 'Sesi Presensi Berakhir' };
-  }
-  
-  // Update UI if on karyawan page
-  if (window.location.pathname.endsWith('karyawan.html')) {
-    const statusElement = $('#statusText');
-    const statusChip = $('#statusChip');
-    
-    if (statusElement && statusChip) {
-      statusElement.textContent = presenceStatus.text;
-      
-      // Update chip color based on status
-      statusChip.className = 'status ';
-      switch (presenceStatus.status) {
-        case 'active':
-          statusChip.classList.add('s-good');
-          break;
-        case 'waiting':
-        case 'between':
-          statusChip.classList.add('s-warn');
-          break;
-        case 'libur':
-        case 'ended':
-          statusChip.classList.add('s-bad');
-          break;
+      console.log("No user, redirecting to login");
+      if (!window.location.pathname.endsWith('index.html')) {
+        window.location.href = 'index.html';
       }
     }
-  }
+  });
 }
 
-// Initialize the application
-async function initApp() {
-  try {
-    // Load custom time rules
-    customRules = await loadCustomTimeRules();
-    
-    // Set up auth state listener
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        currentUser = user;
-        
-        // Check if user has access
-        if (!isAdmin(user.uid) && !isKaryawan(user.uid)) {
-          toast('Akun tidak memiliki akses ke sistem', 'error');
-          await auth.signOut();
-          window.location.href = 'index.html';
-          return;
-        }
-        
-        // Load user profile
-        await loadUserProfile(user.uid);
-        
-        // Redirect based on role
-        if (isAdmin(user.uid) && !window.location.pathname.endsWith('admin.html')) {
-          window.location.href = 'admin.html';
-        } else if (isKaryawan(user.uid) && !window.location.pathname.endsWith('karyawan.html')) {
-          window.location.href = 'karyawan.html';
-        }
-        
-        // Initialize presence status checker for karyawan
-        if (isKaryawan(user.uid)) {
-          initPresenceStatusChecker();
-        }
-      } else {
-        // Not signed in, redirect to login
-        if (!window.location.pathname.endsWith('index.html')) {
-          window.location.href = 'index.html';
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error initializing app:', error);
-    toast('Gagal memuat aplikasi', 'error');
-  }
-}
-
-// Initialize when DOM is loaded
+// Start the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
