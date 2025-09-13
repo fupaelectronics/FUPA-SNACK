@@ -1,161 +1,180 @@
+// cron.js - Cron jobs for Fupa Snack Sistem
+
 const admin = require('firebase-admin');
 const cron = require('node-cron');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-// Inisialisasi Firebase Admin SDK
+// Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
+  credential: admin.credential.cert(serviceAccount)
 });
 
 const db = admin.firestore();
 
-// Sistem ALPA: Mengecek dan mencatat alpa
-async function checkAndRecordAlpa() {
-  console.log('Running ALPA system...');
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTime = currentHour * 60 + currentMinute;
-  
-  // Check if it's Sunday
-  if (now.getDay() === 0) {
-    console.log('Hari Minggu, tidak ada presensi.');
-    return;
-  }
-  
-  // Default time rules
-  const DEFAULT_TIME_RULES = {
-    berangkat: { start: { hour: 5, minute: 30 }, end: { hour: 6, minute: 0 } },
-    pulang: { start: { hour: 10, minute: 0 }, end: { hour: 11, minute: 0 } },
-    tolerance: 20, // minutes
-    libur: [0] // Sunday
-  };
-  
-  // Get all users
-  const usersSnapshot = await db.collection('users').get();
-  const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  
-  // Check for each user
-  for (const user of users) {
-    // Skip non-karyawan (assuming we have a role field, or we can check by UID)
-    // Jika tidak ada field role, kita asumsikan semua user di collection users adalah karyawan
-    // Atau kita bisa bandingkan dengan UID yang diketahui dari admin (tapi tidak praktis)
+// Collections
+const collections = {
+  NOTIFICATIONS: 'notifications',
+  PRESENCES: 'presences',
+  USERS: 'users'
+};
+
+// Delete old notifications (DEL system)
+async function deleteOldNotifications() {
+  try {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
     
-    // Check if user has presence records for today
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-    
-    const presenceSnapshot = await db.collection('presences')
-      .where('userId', '==', user.id)
-      .where('timestamp', '>=', todayStart)
-      .where('timestamp', '<=', todayEnd)
+    const snapshot = await db.collection(collections.NOTIFICATIONS)
+      .where('timestamp', '<=', threeDaysAgo)
       .get();
     
-    const hasPresence = !presenceSnapshot.empty;
-    
-    // If no presence and it's past tolerance time for pulang, record ALPA
-    const pulangEndTime = DEFAULT_TIME_RULES.pulang.end.hour * 60 + DEFAULT_TIME_RULES.pulang.end.minute;
-    const pulangToleranceEnd = pulangEndTime + DEFAULT_TIME_RULES.tolerance;
-    
-    if (!hasPresence && currentTime > pulangToleranceEnd) {
-      console.log(`Recording ALPA for user: ${user.nama || user.id}`);
-      
-      // Record ALPA for both berangkat and pulang
-      await db.collection('presences').add({
-        userId: user.id,
-        userName: user.nama || user.email,
-        jenis: 'berangkat',
-        status: 'alpa',
-        timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6, 0), // 6 AM
-        coordinates: null,
-        imageUrl: null
-      });
-      
-      await db.collection('presences').add({
-        userId: user.id,
-        userName: user.nama || user.email,
-        jenis: 'pulang',
-        status: 'alpa',
-        timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 0), // 3 PM
-        coordinates: null,
-        imageUrl: null
-      });
-    }
-  }
-}
-
-// Sistem DELLTE: Menghapus notifikasi lama (setiap 7 hari)
-async function deleteOldNotifications() {
-  console.log('Running DELLTE system...');
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
-  const notificationsSnapshot = await db.collection('notifications')
-    .where('timestamp', '<=', sevenDaysAgo)
-    .get();
-  
-  const batch = db.batch();
-  notificationsSnapshot.forEach(doc => {
-    // Check if notification type should be preserved
-    const data = doc.data();
-    const preserveTypes = ['OCD', 'CUTIDS', 'CSVMD', 'PAG'];
-    if (!preserveTypes.includes(data.type)) {
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => {
       batch.delete(doc.ref);
-    }
-  });
-  
-  await batch.commit();
-  console.log('Old notifications deleted successfully');
-}
-
-// Sistem CSVMD: Mengirim notifikasi unduh CSV setiap akhir bulan pukul 13:00 WIB
-async function sendMonthlyCSVNotification() {
-  console.log('Running CSVMD system...');
-  const now = new Date();
-  // Check if it's the end of the month and time is 13:00 WIB (dalam UTC, WIB adalah UTC+7, jadi 06:00 UTC)
-  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  
-  if (now.getDate() === lastDayOfMonth.getDate() && now.getHours() === 6) {
-    console.log('Sending monthly CSV notification...');
+    });
     
-    // Dapatkan UID admin
-    const ADMIN_UIDS = [
-      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
-      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-    ];
-    
-    // Send notification to each admin
-    for (const adminUid of ADMIN_UIDS) {
-      await db.collection('notifications').add({
-        type: 'CSVMD',
-        userId: adminUid,
-        message: 'Laporan CSV bulanan siap diunduh',
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        read: false
-      });
-    }
-    
-    console.log('Monthly CSV notifications sent');
-  } else {
-    console.log('Not the end of month or not 13:00 WIB');
+    await batch.commit();
+    console.log(`Deleted ${snapshot.size} old notifications`);
+  } catch (error) {
+    console.error('Error deleting old notifications:', error);
   }
 }
 
-// Jadwalkan cron jobs
-// Jalankan setiap hari jam 18:00 WIB (11:00 UTC) untuk ALPA dan DELLTE
-cron.schedule('0 11 * * *', async () => {
-  console.log('Running scheduled cron jobs at 18:00 WIB');
-  await checkAndRecordAlpa();
+// Send monthly CSV report (CSVD system)
+async function sendMonthlyCSVReport() {
+  try {
+    // Get first and last day of previous month
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    // Format dates for filename
+    const formatDate = (date) => date.toISOString().split('T')[0];
+    const startDateStr = formatDate(firstDay);
+    const endDateStr = formatDate(lastDay);
+    
+    // Get all presences for the month
+    const snapshot = await db.collection(collections.PRESENCES)
+      .where('timestamp', '>=', firstDay)
+      .where('timestamp', '<=', lastDay)
+      .get();
+    
+    const presences = snapshot.docs.map(doc => doc.data());
+    
+    // Group by user
+    const users = {};
+    presences.forEach(presence => {
+      if (!users[presence.uid]) {
+        users[presence.uid] = {
+          email: presence.email,
+          records: []
+        };
+      }
+      users[presence.uid].records.push(presence);
+    });
+    
+    // Sort users alphabetically
+    const sortedUsers = Object.keys(users)
+      .sort((a, b) => users[a].email.localeCompare(users[b].email))
+      .map(uid => users[uid]);
+    
+    // Create CSV content
+    const csvWriter = createCsvWriter({
+      path: `/tmp/rekap-${startDateStr}-${endDateStr}.csv`,
+      header: [
+        { id: 'name', title: 'Nama' },
+        { id: 'date', title: 'Tanggal' },
+        { id: 'time', title: 'Jam' },
+        { id: 'type', title: 'Jenis' },
+        { id: 'status', title: 'Status' },
+        { id: 'coordinates', title: 'Koordinat' }
+      ]
+    });
+    
+    const records = [];
+    sortedUsers.forEach(user => {
+      // Sort records by date and type
+      user.records.sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.type === 'berangkat' ? -1 : 1;
+      });
+      
+      user.records.forEach(record => {
+        records.push({
+          name: user.email.split('@')[0],
+          date: record.date,
+          time: record.time,
+          type: record.type,
+          status: record.status,
+          coordinates: `${record.location.latitude},${record.location.longitude}`
+        });
+      });
+      
+      // Add empty record for spacing
+      records.push({
+        name: '',
+        date: '',
+        time: '',
+        type: '',
+        status: '',
+        coordinates: ''
+      });
+    });
+    
+    // Write CSV file
+    await csvWriter.writeRecords(records);
+    
+    // Here you would typically send the CSV file via email or upload to storage
+    // For now, we'll just log that it was created
+    console.log(`Created CSV report for ${startDateStr} to ${endDateStr}`);
+    
+    // Create notification for admin
+    await db.collection(collections.NOTIFICATIONS).add({
+      type: 'csv-report',
+      title: 'Laporan Bulanan CSV',
+      message: `Laporan presensi bulan ${firstDay.toLocaleString('id-ID', { month: 'long', year: 'numeric' })} telah siap untuk diunduh`,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+      target: 'admin',
+      csvUrl: `/tmp/rekap-${startDateStr}-${endDateStr}.csv` // This would be a real URL in production
+    });
+    
+  } catch (error) {
+    console.error('Error creating monthly CSV report:', error);
+  }
+}
+
+// Main cron job function
+async function runCronJobs() {
+  console.log('Starting Fupa Snack cron jobs...');
+  
+  // Delete old notifications every day
   await deleteOldNotifications();
-});
+  
+  // Send monthly report on the first day of the month at 12:00 WIB (05:00 UTC)
+  const now = new Date();
+  if (now.getDate() === 1) {
+    await sendMonthlyCSVReport();
+  }
+  
+  console.log('Cron jobs completed');
+}
 
-// Jalankan setiap hari jam 06:00 UTC (13:00 WIB) untuk CSVMD
-cron.schedule('0 6 * * *', async () => {
-  console.log('Running scheduled cron jobs at 13:00 WIB');
-  await sendMonthlyCSVNotification();
-});
+// Run immediately if called directly
+if (require.main === module) {
+  runCronJobs().then(() => {
+    process.exit(0);
+  }).catch(error => {
+    console.error('Cron job failed:', error);
+    process.exit(1);
+  });
+}
 
-console.log('Cron jobs scheduled successfully');
+// Export for testing
+module.exports = {
+  deleteOldNotifications,
+  sendMonthlyCSVReport,
+  runCronJobs
+};
