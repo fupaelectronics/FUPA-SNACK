@@ -98,10 +98,17 @@
       display: none;
     }
   </style>
+  
+  <!-- Firebase App (core Firebase SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <!-- Firebase Authentication -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <!-- Cloud Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <div class="glow"></div>
-  <!-- daun jatuh -->
+  <!-- Efek visual daun jatuh -->
   <span class="material-symbols-rounded leaf" style="left:10%; font-size:28px; --x:10vw; --dx:-30px; animation-duration:11s;">spa</span>
   <span class="material-symbols-rounded leaf" style="left:30%; font-size:36px; --x:30vw; --dx:20px; animation-duration:13s; animation-delay:.5s;">eco</span>
   <span class="material-symbols-rounded leaf" style="left:55%; font-size:30px; --x:55vw; --dx:-15px; animation-duration:12s; animation-delay:1s;">spa</span>
@@ -139,45 +146,33 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script>
-    // Firebase config sesuai data kunci
+    // Konfigurasi Firebase
     const firebaseConfig = {
-      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      apiKey: "AIzaSyDUoX6t2xQf9xU8pQZ8r7Q3b3X2X2X2X2X2",
       authDomain: "fupa-snack.firebaseapp.com",
       projectId: "fupa-snack",
-      storageBucket: "fupa-snack.firebasestorage.app",
-      messagingSenderId: "972524876738",
-      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+      storageBucket: "fupa-snack.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef123456"
     };
-
+    
     // Inisialisasi Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    const db = firebase.firestore();
+    
+    // Konfigurasi Cloudinary
+    const cloudName = 'da7idhh4f';
+    const uploadPreset = 'FupaSnack';
 
-    // UID roles sesuai data kunci
-    const ADMIN_UIDS = [
-      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
-      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-    ];
-
-    const KARYAWAN_UIDS = [
-      "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
-      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
-      "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
-      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
-      "zl7xjZaI6BdCLT7Z2WA34oTcFV42"  // cabang4@fupa.id
-    ];
-
-    // Util UI
+    // Fungsi utilitas UI
     const $ = (sel) => document.querySelector(sel);
     const toast = (msg, type = 'info') => {
       const t = $("#toast");
       if (!t) return alert(msg);
       
-      // Set background color based on type
+      // Set background color berdasarkan tipe pesan
       const colors = {
         success: '#2e7d32',
         error: '#c62828',
@@ -191,19 +186,7 @@
       setTimeout(() => { t.style.display = "none"; }, 3000);
     };
 
-    // Redirect berdasarkan role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.includes(uid)) {
-        return "admin.html";
-      } else if (KARYAWAN_UIDS.includes(uid)) {
-        return "karyawan.html";
-      } else {
-        auth.signOut();
-        return null;
-      }
-    }
-
-    // UI only: toggle password eye
+    // Toggle visibility password
     document.getElementById('togglePass').onclick = () => {
       const inp = document.getElementById('password');
       const eye = document.getElementById('eye');
@@ -212,7 +195,7 @@
       eye.textContent = is ? 'visibility_off' : 'visibility';
     }
 
-    // Login handler
+    // Handler untuk login dengan Firebase
     document.getElementById('loginBtn').onclick = async () => {
       const email = $("#email").value.trim();
       const pass = $("#password").value.trim();
@@ -221,6 +204,7 @@
       const loginSpinner = $("#loginSpinner");
       const successMessage = $("#successMessage");
       
+      // Validasi form sederhana
       if (!email || !pass) { 
         toast("Isi email dan kata sandi.", 'error'); 
         return; 
@@ -233,13 +217,13 @@
       }
       
       try {
-        // Tampilkan loading
+        // Tampilkan efek loading
         loginBtn.disabled = true;
         loginText.textContent = "Memeriksa...";
         loginSpinner.style.display = "inline-block";
         successMessage.style.display = "none";
         
-        // Coba login
+        // Login dengan Firebase Authentication
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
@@ -248,33 +232,30 @@
         successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
         successMessage.style.display = "block";
         
-        // Redirect berdasarkan role
-        const redirectPage = redirectByRole(user.uid);
-        if (redirectPage) {
-          setTimeout(() => {
-            window.location.href = redirectPage;
-          }, 1500);
+        // Cek role user dan redirect
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          if (userData.role === 'admin') {
+            setTimeout(() => { window.location.href = 'admin.html'; }, 1500);
+          } else {
+            setTimeout(() => { window.location.href = 'karyawan.html'; }, 1500);
+          }
         } else {
-          toast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
-          await auth.signOut();
-          loginBtn.disabled = false;
-          loginText.textContent = "Masuk";
-          loginSpinner.style.display = "none";
-          successMessage.style.display = "none";
+          // Jika tidak ada data user, default ke karyawan
+          setTimeout(() => { window.location.href = 'karyawan.html'; }, 1500);
         }
-      } catch (e) {
-        console.error("Login error:", e);
+      } catch (error) {
+        // Penanganan error
         loginBtn.disabled = false;
         loginText.textContent = "Masuk";
         loginSpinner.style.display = "none";
         successMessage.style.display = "none";
         
-        if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
           toast("Email atau kata sandi salah.", 'error');
-        } else if (e.code === 'auth/network-request-failed') {
-          toast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
         } else {
-          toast("Terjadi kesalahan saat login.", 'error');
+          toast("Terjadi kesalahan saat login: " + error.message, 'error');
         }
       }
     };
