@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Presensi FUPA — Karyawan</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#FFC107" />
+  <meta name="theme-color" content="#FFB300" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
+  <link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20">
+  <meta name="msapplication-TileImage" content="https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20">
+  <meta name="msapplication-TileColor" content="#FFB300">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
@@ -147,6 +153,21 @@
       gap: 12px;
       margin-top: 12px;
     }
+    .install-btn {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: linear-gradient(135deg, #673AB7, #4527A0);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--soft-shadow);
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -220,6 +241,11 @@
   <!-- FAB cuti -->
   <button class="fab" id="cutiFab" title="Ajukan cuti">
     <span class="material-symbols-rounded">event</span>
+  </button>
+
+  <!-- Install button -->
+  <button class="install-btn" id="installBtn" style="display:none">
+    <span class="material-symbols-rounded">download</span> Install App
   </button>
 
   <!-- Dialog profil -->
@@ -343,6 +369,9 @@
       // Start presence status updates
       updatePresenceStatus();
       setInterval(updatePresenceStatus, 60000);
+      
+      // Initialize PWA install prompt
+      initPWA();
     }
 
     // Load and render presence history
@@ -500,6 +529,44 @@
             break;
         }
       }
+    }
+
+    // PWA installation handling
+    let deferredPrompt;
+    function initPWA() {
+      // Prevent the mini-infobar from appearing on mobile
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        // Show install button
+        const installBtn = $('#installBtn');
+        if (installBtn) {
+          installBtn.style.display = 'block';
+        }
+      });
+      
+      // Handle install button click
+      $('#installBtn').addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+          $('#installBtn').style.display = 'none';
+        }
+        
+        deferredPrompt = null;
+      });
+      
+      // Listen for app installation
+      window.addEventListener('appinstalled', () => {
+        console.log('PWA was installed');
+        $('#installBtn').style.display = 'none';
+        deferredPrompt = null;
+      });
     }
 
     // Event listeners
@@ -680,6 +747,19 @@
         await loadAndRenderPresenceHistory();
       });
     });
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          })
+          .catch(function(error) {
+            console.log('ServiceWorker registration failed: ', error);
+          });
+      });
+    }
   </script>
 </body>
 </html>
