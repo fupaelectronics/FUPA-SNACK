@@ -1,21 +1,54 @@
 {
   "name": "Presensi FUPA Snack",
-  "short_name": "FupaSnack",
-  "description": "Sistem presensi digital untuk FUPA Snack",
+  "short_name": "FUPA Presensi",
+  "description": "Sistem presensi digital untuk karyawan FUPA Snack",
   "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#FFC107",
+  "background_color": "#FFB300",
   "theme_color": "#FFB300",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "72x72",
+      "type": "image/svg+xml"
     },
     {
-      "src": "icon-512x512.png",
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "96x96",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "128x128",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "144x144",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "152x152",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "sizes": "384x384",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml"
     }
-  ]
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "id-ID"
 }
