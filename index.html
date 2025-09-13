@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Presensi FUPA — Masuk</title>
-  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#FFC107" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
@@ -98,17 +98,10 @@
       display: none;
     }
   </style>
-  
-  <!-- Firebase App (core SDK) -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <!-- Firebase Auth -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-  <!-- Firebase Firestore -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <div class="glow"></div>
-  <!-- Efek visual daun jatuh -->
+  <!-- daun jatuh -->
   <span class="material-symbols-rounded leaf" style="left:10%; font-size:28px; --x:10vw; --dx:-30px; animation-duration:11s;">spa</span>
   <span class="material-symbols-rounded leaf" style="left:30%; font-size:36px; --x:30vw; --dx:20px; animation-duration:13s; animation-delay:.5s;">eco</span>
   <span class="material-symbols-rounded leaf" style="left:55%; font-size:30px; --x:55vw; --dx:-15px; animation-duration:12s; animation-delay:1s;">spa</span>
@@ -146,50 +139,12 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="./app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
   <script>
-    // Inisialisasi Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
-      authDomain: "fupa-snack.firebaseapp.com",
-      projectId: "fupa-snack",
-      storageBucket: "fupa-snack.firebasestorage.app",
-      messagingSenderId: "972524876738",
-      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
-    };
-    
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    // Daftar UID Admin
-    const adminUIDs = [
-      'O1SJ7hYop3UJjDcsA3JqT29aapI3', // karomi@fupa.id
-      'uB2XsyM6fXUj493cRlHCqpe2fxH3'  // annisa@fupa.id
-    ];
-
-    // Fungsi utilitas UI
-    const $ = (sel) => document.querySelector(sel);
-    const toast = (msg, type = 'info') => {
-      const t = $("#toast");
-      if (!t) return alert(msg);
-      
-      // Set background color berdasarkan tipe pesan
-      const colors = {
-        success: '#2e7d32',
-        error: '#c62828',
-        warning: '#f9a825',
-        info: '#111'
-      };
-      
-      t.style.backgroundColor = colors[type] || colors.info;
-      t.textContent = msg;
-      t.style.display = "block";
-      setTimeout(() => { t.style.display = "none"; }, 3000);
-    };
-
-    // Toggle visibility password
+    // UI only: toggle password eye
     document.getElementById('togglePass').onclick = () => {
       const inp = document.getElementById('password');
       const eye = document.getElementById('eye');
@@ -198,36 +153,35 @@
       eye.textContent = is ? 'visibility_off' : 'visibility';
     }
 
-    // Handler untuk login
+    // Login handler
     document.getElementById('loginBtn').onclick = async () => {
-      const email = $("#email").value.trim();
-      const pass = $("#password").value.trim();
-      const loginBtn = $("#loginBtn");
-      const loginText = $("#loginText");
-      const loginSpinner = $("#loginSpinner");
-      const successMessage = $("#successMessage");
+      const email = document.getElementById('email').value.trim();
+      const pass = document.getElementById('password').value.trim();
+      const loginBtn = document.getElementById('loginBtn');
+      const loginText = document.getElementById('loginText');
+      const loginSpinner = document.getElementById('loginSpinner');
+      const successMessage = document.getElementById('successMessage');
       
-      // Validasi form sederhana
       if (!email || !pass) { 
-        toast("Isi email dan kata sandi.", 'error'); 
+        FupaApp.showToast("Isi email dan kata sandi.", 'error'); 
         return; 
       }
       
       // Validasi format email
       if (!email.endsWith('@fupa.id')) {
-        toast("Email harus menggunakan domain @fupa.id", 'error');
+        FupaApp.showToast("Email harus menggunakan domain @fupa.id", 'error');
         return;
       }
       
       try {
-        // Tampilkan efek loading
+        // Tampilkan loading
         loginBtn.disabled = true;
         loginText.textContent = "Memeriksa...";
         loginSpinner.style.display = "inline-block";
         successMessage.style.display = "none";
         
-        // Login dengan Firebase Auth
-        const userCredential = await auth.signInWithEmailAndPassword(email, pass);
+        // Coba login
+        const userCredential = await firebase.auth().signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
         // Tampilkan pesan sukses
@@ -235,42 +189,34 @@
         successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
         successMessage.style.display = "block";
         
-        // Cek role user dan redirect
-        const isAdmin = adminUIDs.includes(user.uid);
-        
-        // Simpan data user ke localStorage
-        localStorage.setItem('user', JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          role: isAdmin ? 'admin' : 'karyawan'
-        }));
-        
         // Redirect berdasarkan role
-        setTimeout(() => {
-          if (isAdmin) {
-            window.location.href = './admin.html';
-          } else {
-            window.location.href = './karyawan.html';
-          }
-        }, 1500);
-      } catch (error) {
-        // Penanganan error
+        const redirectPage = FupaApp.redirectByRole(user.uid);
+        if (redirectPage) {
+          setTimeout(() => {
+            window.location.href = redirectPage;
+          }, 1500);
+        } else {
+          FupaApp.showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
+          await firebase.auth().signOut();
+          loginBtn.disabled = false;
+          loginText.textContent = "Masuk";
+          loginSpinner.style.display = "none";
+          successMessage.style.display = "none";
+        }
+      } catch (e) {
+        console.error("Login error:", e);
         loginBtn.disabled = false;
         loginText.textContent = "Masuk";
         loginSpinner.style.display = "none";
         successMessage.style.display = "none";
         
-        // Tampilkan pesan error sesuai kode error
-        let errorMessage = "Terjadi kesalahan saat login.";
-        if (error.code === 'auth/user-not-found') {
-          errorMessage = "Email tidak ditemukan.";
-        } else if (error.code === 'auth/wrong-password') {
-          errorMessage = "Kata sandi salah.";
-        } else if (error.code === 'auth/invalid-email') {
-          errorMessage = "Format email tidak valid.";
+        if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+          FupaApp.showToast("Email atau kata sandi salah.", 'error');
+        } else if (e.code === 'auth/network-request-failed') {
+          FupaApp.showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
+        } else {
+          FupaApp.showToast("Terjadi kesalahan saat login.", 'error');
         }
-        
-        toast(errorMessage, 'error');
       }
     };
 
@@ -285,11 +231,14 @@
     window.addEventListener('load', () => {
       document.getElementById('email').focus();
       
-      // Cek jika user sudah login
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        $("#email").value = user.email;
+      // Register service worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          }, function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+          });
       }
     });
   </script>
