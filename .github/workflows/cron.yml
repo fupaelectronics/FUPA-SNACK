@@ -1,26 +1,16 @@
-name: Fupa Snack Cron Jobs
+name: Cron Tasks
 on:
   schedule:
-    - cron: '0 5 * * *'  # Run daily at 05:00 UTC (12:00 WIB)
-  workflow_dispatch:
-
+    - cron: '0 17 * * *'    # DEL harian 00:00 WIB
+    - cron: '0 17 30 * *'   # CSVD tgl 30 00:00 WIB
 jobs:
   cron:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm install
-
-    - name: Run cron jobs
-      env:
-        FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      run: node cron.js
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with: node-version: '18'
+      - run: npm install
+      - run: node cron.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
