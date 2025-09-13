@@ -1,38 +1,40 @@
-// cron.js
-require("dotenv").config();
-const admin = require("firebase-admin");
+// Script untuk cleanup otomatis setiap 3 hari sekali
+const admin = require('firebase-admin');
+
+// Inisialisasi Firebase Admin SDK
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+  credential: admin.credential.cert(serviceAccount)
 });
+
 const db = admin.firestore();
 
-// 1. DEL: hapus notifikasi >3 hari
-(async () => {
-  const cutoff = Date.now() - 3*24*60*60*1000;
-  const snaps = await db.collectionGroup("notifications").where("timestamp","<",cutoff).get();
-  snaps.forEach(d => d.ref.delete());
-  console.log("DEL: notifikasi >3 hari dihapus");
-})();
+// Hapus notifikasi yang lebih lama dari 3 hari
+async function cleanupNotifications() {
+  try {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    const snapshot = await db.collection('notifications')
+      .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(threeDaysAgo))
+      .get();
+    
+    const batch = db.batch();
+    snapshot.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    console.log(`Deleted ${snapshot.size} old notifications`);
+  } catch (error) {
+    console.error('Error cleaning up notifications:', error);
+  }
+}
 
-// 2. CSVD: rekapan bulan ini → simpan ke storage/public/csv/…
-(async () => {
-  const now = new Date();
-  const month = now.getMonth(), year = now.getFullYear();
-  const start = new Date(year, month, 1).getTime();
-  const end = new Date(year, month+1, 1).getTime();
-  const snaps = await db.collection("presensi")
-    .where("timestamp",">=",start)
-    .where("timestamp","<",end)
-    .orderBy("uid")
-    .orderBy("timestamp")
-    .get();
-  let csv = "";
-  let lastUID = "";
-  snaps.forEach(d => {
-    const x = d.data();
-    if (x.uid !== lastUID) { csv += "\n"; lastUID = x.uid; }
-    csv += `${new Date(x.timestamp).toLocaleString()},${x.uid},${x.jenis}\n`;
-  });
-  // Simpan CSV ke Firestore Storage (opsional)
-  console.log("CSVD: rekapan bulan dibuat");
-})();
+// Jalankan cleanup
+async function runCleanup() {
+  await cleanupNotifications();
+  process.exit(0);
+}
+
+runCleanup();
