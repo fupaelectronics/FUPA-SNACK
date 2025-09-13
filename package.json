@@ -1,14 +1,11 @@
 {
-  "name": "fupa-snack-cron",
+  "name": "fupa-snack",
   "version": "1.0.0",
-  "description": "Cron jobs for Fupa Snack Sistem",
-  "main": "cron.js",
   "scripts": {
-    "start": "node cron.js"
+    "cron": "node cron.js"
   },
   "dependencies": {
-    "firebase-admin": "^11.5.0",
-    "node-cron": "^3.0.2",
-    "csv-writer": "^1.6.0"
+    "firebase-admin": "^11.10.1",
+    "dotenv": "^16.4.1"
   }
 }
