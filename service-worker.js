@@ -1,12 +1,11 @@
-// Service Worker untuk FUPA Presensi App
-const CACHE_NAME = 'fupa-presensi-v1';
+const CACHE_NAME = 'fupa-snack-v1';
 const urlsToCache = [
-  './',
-  './index.html',
-  './karyawan.html',
-  './admin.html',
-  './app.js',
-  './manifest.webmanifest',
+  '/',
+  '/index.html',
+  '/karyawan.html',
+  '/admin.html',
+  '/app.js',
+  '/compress-image.js',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
@@ -14,7 +13,7 @@ const urlsToCache = [
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'
 ];
 
-// Install event
+// Install service worker
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -24,7 +23,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event
+// Fetch cached resources
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
@@ -35,14 +34,14 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Activate event
+// Update service worker
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
           }
         })
       );
