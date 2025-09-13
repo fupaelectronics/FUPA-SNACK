@@ -1,19 +1,14 @@
 name: Fupa Snack Cron Jobs
-
 on:
   schedule:
-    # Setiap hari jam 18:00 WIB (11:00 UTC) - untuk ALPA dan DELLTE
-    - cron: '0 11 * * *'
-    # Setiap hari jam 06:00 UTC (13:00 WIB) untuk CSVMD
-    - cron: '0 6 * * *'
-  workflow_dispatch: # Manual trigger
+    - cron: '0 5 * * *'  # Run daily at 05:00 UTC (12:00 WIB)
+  workflow_dispatch:
 
 jobs:
   cron:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v3
 
     - name: Setup Node.js
@@ -28,4 +23,4 @@ jobs:
     - name: Run cron jobs
       env:
         FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      run: npm start
+      run: node cron.js
