@@ -1,11 +1,21 @@
 {
-  "name": "fupa-snack",
+  "name": "fupa-presensi",
   "version": "1.0.0",
+  "description": "Aplikasi presensi digital untuk FUPA Snack",
+  "main": "app.js",
   "scripts": {
-    "cron": "node cron.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "echo \"No build process needed\"",
+    "deploy": "echo \"Deploy to GitHub Pages\""
   },
-  "dependencies": {
-    "firebase-admin": "^11.10.1",
-    "dotenv": "^16.4.1"
+  "keywords": [
+    "presensi",
+    "firebase",
+    "pwa"
+  ],
+  "author": "FUPA Snack",
+  "license": "MIT",
+  "devDependencies": {
+    "firebase-tools": "^12.4.0"
   }
 }
