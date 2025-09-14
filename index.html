@@ -23,7 +23,7 @@
       min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply; filter:blur(40px);
       background:
         radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
         radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
@@ -142,7 +142,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
   <script>
     // UI only: toggle password eye
@@ -156,15 +155,15 @@
 
     // Login handler
     document.getElementById('loginBtn').onclick = async () => {
-      const email = document.getElementById('email').value.trim();
-      const pass = document.getElementById('password').value.trim();
-      const loginBtn = document.getElementById('loginBtn');
-      const loginText = document.getElementById('loginText');
-      const loginSpinner = document.getElementById('loginSpinner');
-      const successMessage = document.getElementById('successMessage');
+      const email = $("#email").value.trim();
+      const pass = $("#password").value.trim();
+      const loginBtn = $("#loginBtn");
+      const loginText = $("#loginText");
+      const loginSpinner = $("#loginSpinner");
+      const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        firebaseApp.showToast("Isi email dan kata sandi.", 'error'); 
+        toast("Isi email dan kata sandi."); 
         return; 
       }
       
@@ -176,7 +175,7 @@
         successMessage.style.display = "none";
         
         // Coba login
-        const userCredential = await firebaseApp.auth.signInWithEmailAndPassword(email, pass);
+        const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
         // Tampilkan pesan sukses
@@ -185,7 +184,19 @@
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        firebaseApp.redirectBasedOnRole(user.uid);
+        const redirectPage = await redirectByRole(user.uid);
+        if (redirectPage) {
+          setTimeout(() => {
+            window.location.href = redirectPage;
+          }, 1500);
+        } else {
+          toast("Akses ditolak: akun belum diberi peran yang benar.");
+          await auth.signOut();
+          loginBtn.disabled = false;
+          loginText.textContent = "Masuk";
+          loginSpinner.style.display = "none";
+          successMessage.style.display = "none";
+        }
       } catch (e) {
         console.error("Login error:", e);
         loginBtn.disabled = false;
@@ -194,9 +205,9 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          firebaseApp.showToast("Email atau kata sandi salah.", 'error');
+          toast("Email atau kata sandi salah.");
         } else {
-          firebaseApp.showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
+          toast("Gagal masuk. Periksa koneksi internet Anda.");
         }
       }
     };
@@ -205,14 +216,6 @@
     document.getElementById('password').addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
         document.getElementById('loginBtn').click();
-      }
-    });
-
-    // Cek apakah user sudah login
-    firebaseApp.auth.onAuthStateChanged((user) => {
-      if (user) {
-        // User sudah login, redirect berdasarkan role
-        firebaseApp.redirectBasedOnRole(user.uid);
       }
     });
   </script>
