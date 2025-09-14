@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fupa-snack-v1';
+const CACHE_NAME = 'fupa-presensi-v1';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -30,7 +30,6 @@ self.addEventListener('fetch', (event) => {
           return response;
         }
         return fetch(event.request);
-      }
-    )
+      })
   );
 });
