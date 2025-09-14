@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Aturan untuk collection users
+    match /users/{userId} {
+      allow read, write: if request.auth != null && 
+        (request.auth.uid == userId || isAdmin());
+      
+      allow create: if request.auth != null && isAdmin();
+    }
+    
+    // Aturan untuk collection presensi
+    match /presensi/{presensiId} {
+      allow read: if request.auth != null && 
+        (isAdmin() || request.auth.uid == resource.data.uid);
+      allow write: if request.auth != null && 
+        (isAdmin() || (request.auth.uid == resource.data.uid && 
+        request.time == request.resource.data.timestamp));
+    }
+    
+    // Aturan untuk collection cuti
+    match /cuti/{cutiId} {
+      allow read: if request.auth != null && 
+        (isAdmin() || request.auth.uid == resource.data.uid);
+      allow write: if request.auth != null && 
+        (isAdmin() || (request.auth.uid == resource.data.uid && 
+        request.resource.data.status == 'pending'));
+    }
+    
+    // Aturan untuk collection notifikasi
+    match /notifikasi/{notifId} {
+      allow read: if request.auth != null && 
+        (isAdmin() || request.auth.uid == resource.data.uid || 
+        resource.data.targetRole == getUserRole());
+      allow write: if request.auth != null && isAdmin();
+    }
+    
+    // Aturan untuk collection pengumuman
+    match /pengumuman/{pengumumanId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
+    }
+    
+    // Aturan untuk collection aturanwaktudefault
+    match /aturanwaktudefault/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
+    }
+    
+    // Aturan untuk collection aturanwaktuuser
+    match /aturanwaktuuser/{userId} {
+      allow read: if request.auth != null && 
+        (isAdmin() || request.auth.uid == userId);
+      allow write: if request.auth != null && isAdmin();
+    }
+    
+    // Fungsi pembantu
+    function isAdmin() {
+      return request.auth.token.admin == true;
+    }
+    
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+    
+    function isSameUser(userId) {
+      return request.auth.uid == userId;
+    }
+  }
+}
