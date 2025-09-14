@@ -1,36 +1,49 @@
-// service-worker.js - basic caching SW for PWA
-const CACHE_NAME = 'fupa-cache-v1';
-const ASSETS = [
+const CACHE_NAME = 'fupa-presensi-v1';
+const urlsToCache = [
   '/',
   '/index.html',
   '/karyawan.html',
   '/admin.html',
   '/app.js',
-  '/manifest.webmanifest'
+  'https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+// Install service worker
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        return cache.addAll(urlsToCache);
+      })
   );
-  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(clients.claim());
+// Fetch resources from cache or network
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Return cached version or fetch from network
+        return response || fetch(event.request);
+      })
+  );
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  // Network-first for API calls, Cache-first for navigation/static
-  if (req.method !== 'GET') return;
-  e.respondWith(
-    caches.match(req).then(cached => {
-      if (cached) return cached;
-      return fetch(req).then(resp => {
-        // optionally cache certain responses
-        return resp;
-      }).catch(() => caches.match('/index.html'));
+// Clean up old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
     })
   );
 });
