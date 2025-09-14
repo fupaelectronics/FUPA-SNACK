@@ -208,7 +208,10 @@
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div id="cameraContainer" class="camera-placeholder">
+          <video id="cameraPreview" autoplay playsinline style="display:none; width:100%; height:300px; object-fit:cover; border-radius:12px;"></video>
+          <canvas id="photoCanvas" style="display:none;"></canvas>
+          <img id="photoPreview" style="display:none; width:100%; height:300px; object-fit:cover; border-radius:12px;" />
+          <div id="cameraPlaceholder" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
         </div>
@@ -242,7 +245,10 @@
         </div>
         <div id="logList" style="display:grid; gap:8px; max-height:400px; overflow-y:auto">
           <div class="riwayat-item">
-            Memuat riwayat presensi...
+            <div class="riwayat-jenis">
+              <span class="material-symbols-rounded">history</span>
+              Memuat riwayat presensi...
+            </div>
           </div>
         </div>
       </section>
@@ -288,7 +294,11 @@
       <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="dlg-body" id="notifList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      Memuat notifikasi...
+      <div class="notif-item">
+        <div class="notif-content">
+          Memuat notifikasi...
+        </div>
+      </div>
     </div>
   </dialog>
 
@@ -321,295 +331,127 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
   <script>
     // Variabel global
     let currentUser = null;
     let userData = null;
     let cameraStream = null;
-    let capturedPhoto = null;
+    let photoDataUrl = null;
+    let notifListener = null;
+    let presensiListener = null;
 
-    // Inisialisasi
+    // Inisialisasi halaman
     document.addEventListener('DOMContentLoaded', async function() {
-      // Cek status auth
-      firebaseApp.auth.onAuthStateChanged(async (user) => {
+      // Cek status autentikasi
+      auth.onAuthStateChanged(async (user) => {
         if (user) {
           currentUser = user;
-          const role = firebaseApp.checkUserRole(user.uid);
-          if (role !== 'karyawan') {
-            firebaseApp.showToast('Akses ditolak. Hanya untuk karyawan.', 'error');
-            await firebaseApp.auth.signOut();
-            window.location.href = 'index.html';
-            return;
-          }
-          
-          // Load user data
           await loadUserData();
-          
-          // Setup UI
-          setupUI();
-          
-          // Load data
-          await loadPresensiHistory();
-          await loadNotifications();
-          
-          // Update waktu terus menerus
-          setInterval(updateServerTime, 1000);
+          initPage();
         } else {
           window.location.href = 'index.html';
         }
       });
     });
 
-    // Setup UI
-    function setupUI() {
+    // Muat data user
+    async function loadUserData() {
+      try {
+        const userDoc = await db.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          userData = userDoc.data();
+          $('#nama').value = userData.nama || '';
+          $('#alamat').value = userData.alamat || '';
+          if (userData.foto) {
+            $('#pfp').src = userData.foto;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        toast('Gagal memuat data profil', 'error');
+      }
+    }
+
+    // Inisialisasi halaman
+    async function initPage() {
       // Update waktu server
       updateServerTime();
+      setInterval(updateServerTime, 1000);
       
-      // Setup camera
-      setupCamera();
+      // Deteksi lokasi
+      updateLocation();
+      
+      // Inisialisasi camera
+      initCameraUI();
+      
+      // Muat riwayat presensi
+      loadPresenceHistory();
+      
+      // Muat notifikasi
+      setupNotifications();
       
       // Setup event listeners
-      document.getElementById('profileBtn').addEventListener('click', showProfileDialog);
-      document.getElementById('notifBtn').addEventListener('click', showNotificationsDialog);
-      document.getElementById('cutiFab').addEventListener('click', showCutiDialog);
-      document.getElementById('saveProfileBtn').addEventListener('click', saveProfile);
-      document.getElementById('logoutBtn').addEventListener('click', logout);
-      document.getElementById('snapBtn').addEventListener('click', capturePhoto);
-      document.getElementById('uploadBtn').addEventListener('click', uploadPresensi);
-      document.getElementById('ajukanCutiBtn').addEventListener('click', ajukanCuti);
-      document.getElementById('historyFilter').addEventListener('change', loadPresensiHistory);
-      document.getElementById('pfpFile').addEventListener('change', handleProfilePictureUpload);
+      setupEventListeners();
       
       // Update status presensi
       updatePresenceStatus();
     }
 
-    // Load user data
-    async function loadUserData() {
-      try {
-        const doc = await firebaseApp.db.collection('users').doc(currentUser.uid).get();
-        if (doc.exists) {
-          userData = doc.data();
-          document.getElementById('nama').value = userData.nama || '';
-          document.getElementById('alamat').value = userData.alamat || '';
-          if (userData.foto) {
-            document.getElementById('pfp').src = userData.foto;
-          }
-        } else {
-          // Buat data user baru jika belum ada
-          userData = {
-            nama: currentUser.email.split('@')[0],
-            alamat: '',
-            foto: `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.email}&backgroundColor=ffb300,ffd54f&radius=20`,
-            role: 'karyawan',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          };
-          await firebaseApp.db.collection('users').doc(currentUser.uid).set(userData);
-        }
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        firebaseApp.showToast('Gagal memuat data pengguna', 'error');
-      }
-    }
-
     // Update waktu server
     function updateServerTime() {
-      const now = firebaseApp.getWIBDate();
-      document.getElementById('serverTime').textContent = firebaseApp.formatDate(now);
+      const now = new Date();
+      const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      };
+      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
     }
 
-    // Update status presensi
-    function updatePresenceStatus() {
-      const now = firebaseApp.getWIBDate();
-      const statusElement = document.getElementById('statusText');
-      const statusChip = document.getElementById('statusChip');
-      
-      // Periksa OVD (Override Hari Presensi) dulu
-      const today = now.toDateString();
-      firebaseApp.db.collection('ovd').doc(today).get().then((doc) => {
-        if (doc.exists) {
-          const ovd = doc.data();
-          if (ovd.status === 'libur') {
-            statusElement.textContent = 'Libur (Override)';
-            statusChip.className = 'status s-bad';
-            statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span>Libur (Override)</span>';
-            return;
-          } else if (ovd.status === 'wajib') {
-            // Lanjutkan pengecekan status normal
-          }
-        }
-        
-        // Jika tidak ada OVD atau OVD adalah 'wajib', cek status normal
-        if (firebaseApp.isHariLibur()) {
-          statusElement.textContent = 'Hari Libur';
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span>Hari Libur</span>';
-          return;
-        }
-        
-        const hour = now.getHours();
-        const jenis = document.getElementById('jenis').value;
-        const status = firebaseApp.checkPresensiStatus(jenis, now);
-        
-        if (status === 'tepat waktu') {
-          statusElement.textContent = 'Sesi Presensi ' + (jenis === 'berangkat' ? 'Berangkat' : 'Pulang');
-          statusChip.className = 'status s-good';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span>Sesi Presensi ' + (jenis === 'berangkat' ? 'Berangkat' : 'Pulang') + '</span>';
-        } else if (status === 'terlambat') {
-          statusElement.textContent = 'Terlambat';
-          statusChip.className = 'status s-warn';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span>Terlambat</span>';
-        } else {
-          statusElement.textContent = 'Di Luar Sesi Presensi';
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span>Di Luar Sesi Presensi</span>';
-        }
-      });
-    }
-
-    // Setup camera
-    async function setupCamera() {
+    // Update lokasi
+    async function updateLocation() {
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: "user" }, 
-          audio: false 
-        });
-        
-        const cameraContainer = document.getElementById('cameraContainer');
-        cameraContainer.innerHTML = '<video id="cameraPreview" autoplay playsinline></video>';
-        const video = document.getElementById('cameraPreview');
-        video.srcObject = cameraStream;
+        const location = await getCurrentLocation();
+        $('#locText').textContent = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
       } catch (error) {
-        console.error('Error accessing camera:', error);
-        firebaseApp.showToast('Tidak dapat mengakses kamera', 'error');
+        console.error('Error getting location:', error);
+        $('#locText').textContent = 'Tidak dapat mengakses lokasi';
       }
     }
 
-    // Capture photo
-    function capturePhoto() {
-      const video = document.getElementById('cameraPreview');
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      capturedPhoto = canvas.toDataURL('image/jpeg');
-      
-      // Tampilkan preview foto
-      const cameraContainer = document.getElementById('cameraContainer');
-      cameraContainer.innerHTML = `<img src="${capturedPhoto}" alt="Preview foto" style="width:100%; height:auto">`;
-      
-      // Aktifkan tombol upload
-      document.getElementById('uploadBtn').disabled = false;
-      
-      // Stop camera stream
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-      }
-    }
-
-    // Upload presensi
-    async function uploadPresensi() {
+    // Inisialisasi UI camera
+    async function initCameraUI() {
       try {
-        const jenis = document.getElementById('jenis').value;
-        const now = firebaseApp.getWIBDate();
-        const status = firebaseApp.checkPresensiStatus(jenis, now);
-        
-        // Periksa OVD dan hari libur
-        const today = now.toDateString();
-        const ovdDoc = await firebaseApp.db.collection('ovd').doc(today).get();
-        
-        if (ovdDoc.exists && ovdDoc.data().status === 'libur') {
-          firebaseApp.showToast('Hari ini adalah hari libur (override)', 'error');
-          return;
-        }
-        
-        if (!ovdDoc.exists && firebaseApp.isHariLibur()) {
-          firebaseApp.showToast('Hari ini adalah hari libur', 'error');
-          return;
-        }
-        
-        if (status === 'diluar sesi') {
-          firebaseApp.showToast('Di luar sesi presensi', 'error');
-          return;
-        }
-        
-        // Dapatkan lokasi
-        const location = await firebaseApp.getLocation();
-        
-        // Kompres dan upload foto
-        document.getElementById('uploadBtn').disabled = true;
-        document.getElementById('uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
-        
-        // Convert data URL to blob
-        const response = await fetch(capturedPhoto);
-        const blob = await response.blob();
-        const file = new File([blob], 'presensi.jpg', { type: 'image/jpeg' });
-        
-        const fotoUrl = await firebaseApp.compressImage(file);
-        
-        // Simpan data presensi
-        const presensiData = {
-          uid: currentUser.uid,
-          nama: userData.nama || currentUser.email,
-          jenis: jenis,
-          status: status,
-          waktu: now,
-          lokasi: new firebase.firestore.GeoPoint(location.lat, location.lng),
-          foto: fotoUrl,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        await firebaseApp.db.collection('presensi').add(presensiData);
-        
-        // Buat notifikasi untuk admin
-        const notifData = {
-          uid: 'admin',
-          title: 'Presensi Baru',
-          message: `${userData.nama || currentUser.email} telah melakukan presensi ${jenis}`,
-          type: 'presensi',
-          read: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        await firebaseApp.db.collection('notifications').add(notifData);
-        
-        firebaseApp.showToast('Presensi berhasil dicatat', 'success');
-        
-        // Reset UI
-        document.getElementById('uploadBtn').disabled = true;
-        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-        capturedPhoto = null;
-        
-        // Reload camera
-        setupCamera();
-        
-        // Reload history
-        loadPresensiHistory();
+        const video = $('#cameraPreview');
+        cameraStream = await initCamera(video);
+        $('#cameraPlaceholder').style.display = 'none';
+        video.style.display = 'block';
       } catch (error) {
-        console.error('Error uploading presensi:', error);
-        firebaseApp.showToast('Gagal mengupload presensi', 'error');
-        document.getElementById('uploadBtn').disabled = false;
-        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        console.error('Error initializing camera:', error);
+        $('#cameraPlaceholder').innerHTML = '<span class="material-symbols-rounded">error</span> Kamera tidak dapat diakses';
       }
     }
 
-    // Load presensi history
-    async function loadPresensiHistory() {
+    // Muat riwayat presensi
+    async function loadPresenceHistory() {
       try {
-        const filter = document.getElementById('historyFilter').value;
-        let query = firebaseApp.db.collection('presensi')
+        let query = db.collection('presensi')
           .where('uid', '==', currentUser.uid)
-          .orderBy('waktu', 'desc');
+          .orderBy('timestamp', 'desc');
         
-        if (filter !== 'all') {
-          query = query.limit(parseInt(filter));
+        // Terapkan filter jumlah
+        const filterValue = $('#historyFilter').value;
+        if (filterValue !== 'all') {
+          query = query.limit(parseInt(filterValue));
         }
         
         const snapshot = await query.get();
-        const logList = document.getElementById('logList');
+        const logList = $('#logList');
         logList.innerHTML = '';
         
         if (snapshot.empty) {
@@ -619,232 +461,393 @@
         
         snapshot.forEach(doc => {
           const data = doc.data();
-          const waktu = data.waktu.toDate();
+          const date = data.timestamp.toDate();
+          const waktu = date.toLocaleDateString('id-ID') + ' - ' + date.toLocaleTimeString('id-ID');
+          
+          const statusClass = data.status === 'Tepat Waktu' ? 's-good' : 
+                            data.status === 'Terlambat' ? 's-warn' : 's-bad';
+          
+          const icon = data.jenis === 'berangkat' ? 'login' : 'logout';
           
           const item = document.createElement('div');
           item.className = 'riwayat-item';
           item.innerHTML = `
             <div class="riwayat-jenis">
-              <span class="material-symbols-rounded">${data.jenis === 'berangkat' ? 'login' : 'logout'}</span>
-              ${data.jenis === 'berangkat' ? 'Berangkat' : 'Pulang'}
-              <span class="status ${data.status === 'tepat waktu' ? 's-good' : data.status === 'terlambat' ? 's-warn' : 's-bad'}" style="margin-left:auto;font-size:12px">
+              <span class="material-symbols-rounded">${icon}</span>
+              ${data.jenis}
+              <span class="status ${statusClass}" style="margin-left:auto;font-size:12px">
                 ${data.status}
               </span>
             </div>
             <div class="riwayat-time">
-              ${firebaseApp.formatDate(waktu)}
+              ${waktu}
             </div>
           `;
           
           logList.appendChild(item);
         });
       } catch (error) {
-        console.error('Error loading presensi history:', error);
-        firebaseApp.showToast('Gagal memuat riwayat presensi', 'error');
+        console.error('Error loading presence history:', error);
+        toast('Gagal memuat riwayat presensi', 'error');
       }
     }
 
-    // Load notifications
-    async function loadNotifications() {
+    // Setup notifikasi real-time
+    function setupNotifications() {
+      // Hentikan listener sebelumnya jika ada
+      if (notifListener) notifListener();
+      
+      notifListener = db.collection('notifikasi')
+        .where('uid', '==', currentUser.uid)
+        .orderBy('timestamp', 'desc')
+        .onSnapshot(snapshot => {
+          const notifList = $('#notifList');
+          const badge = $('#notifBadge');
+          let unreadCount = 0;
+          
+          notifList.innerHTML = '';
+          
+          if (snapshot.empty) {
+            notifList.innerHTML = '<div class="notif-item">Tidak ada notifikasi</div>';
+            badge.style.display = 'none';
+            return;
+          }
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!data.isRead) unreadCount++;
+            
+            const date = data.timestamp.toDate();
+            const waktu = date.toLocaleDateString('id-ID') + ' - ' + date.toLocaleTimeString('id-ID');
+            
+            const item = document.createElement('div');
+            item.className = 'notif-item';
+            item.innerHTML = `
+              <div class="notif-content">
+                <div style="font-weight:600">${data.pesan}</div>
+                <div style="font-size:12px;opacity:0.7">${waktu}</div>
+              </div>
+              <div class="notif-actions">
+                <button class="icon-btn mark-read" data-id="${doc.id}" title="Tandai sudah dibaca" style="font-size:16px">
+                  <span class="material-symbols-rounded">check_circle</span>
+                </button>
+              </div>
+            `;
+            
+            notifList.appendChild(item);
+          });
+          
+          // Update badge
+          if (unreadCount > 0) {
+            badge.textContent = unreadCount;
+            badge.style.display = 'grid';
+          } else {
+            badge.style.display = 'none';
+          }
+        }, error => {
+          console.error('Error in notifications listener:', error);
+        });
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      // Snap button
+      $('#snapBtn').addEventListener('click', capturePhotoHandler);
+      
+      // Upload button
+      $('#uploadBtn').addEventListener('click', uploadPresenceHandler);
+      
+      // Profile dialog
+      $('#profileBtn').addEventListener('click', () => {
+        $('#profileDlg').showModal();
+      });
+      
+      // Save profile
+      $('#saveProfileBtn').addEventListener('click', saveProfileHandler);
+      
+      // Logout
+      $('#logoutBtn').addEventListener('click', logoutHandler);
+      
+      // Notifications dialog
+      $('#notifBtn').addEventListener('click', () => {
+        $('#notifDlg').showModal();
+      });
+      
+      // Cuti dialog
+      $('#cutiFab').addEventListener('click', () => {
+        // Set default date to today
+        $('#cutiTanggal').valueAsDate = new Date();
+        $('#cutiDlg').showModal();
+      });
+      
+      // Submit cuti
+      $('#ajukanCutiBtn').addEventListener('click', submitCutiHandler);
+      
+      // History filter
+      $('#historyFilter').addEventListener('change', () => {
+        loadPresenceHistory();
+      });
+      
+      // Mark as read buttons (delegasi event)
+      $('#notifList').addEventListener('click', (e) => {
+        if (e.target.closest('.mark-read')) {
+          const notifId = e.target.closest('.mark-read').dataset.id;
+          markNotificationAsRead(notifId);
+        }
+      });
+      
+      // File input for profile picture
+      $('#pfpFile').addEventListener('change', handleProfilePictureChange);
+    }
+
+    // Capture photo handler
+    function capturePhotoHandler() {
+      const video = $('#cameraPreview');
+      const canvas = $('#photoCanvas');
+      const photo = $('#photoPreview');
+      
+      // Set canvas size to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Capture photo
+      photoDataUrl = capturePhoto(video, canvas);
+      
+      // Show photo preview
+      video.style.display = 'none';
+      photo.src = photoDataUrl;
+      photo.style.display = 'block';
+      
+      // Enable upload button
+      $('#uploadBtn').disabled = false;
+      
+      // Stop camera
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+    }
+
+    // Upload presence handler
+    async function uploadPresenceHandler() {
+      const jenis = $('#jenis').value;
+      
       try {
-        const snapshot = await firebaseApp.db.collection('notifications')
-          .where('uid', '==', currentUser.uid)
-          .orderBy('createdAt', 'desc')
-          .get();
+        $('#uploadBtn').disabled = true;
+        $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
         
-        const notifList = document.getElementById('notifList');
-        const notifBadge = document.getElementById('notifBadge');
-        let unreadCount = 0;
+        // Dapatkan lokasi
+        const location = await getCurrentLocation();
+        const koordinat = `${location.lat},${location.lng}`;
         
-        if (snapshot.empty) {
-          notifList.innerHTML = '<div class="notif-item">Tidak ada notifikasi</div>';
-          notifBadge.style.display = 'none';
+        // Kompres dan upload gambar
+        const response = await fetch(photoDataUrl);
+        const blob = await response.blob();
+        const compressedBlob = await compressImage(blob, 10);
+        const fotoUrl = await uploadToCloudinary(compressedBlob);
+        
+        // Dapatkan waktu server
+        const timestamp = getServerTimestamp();
+        
+        // Tentukan status presensi
+        const status = await getPresenceStatus(currentUser.uid, new Date(), jenis);
+        
+        // Simpan ke Firestore
+        await db.collection('presensi').add({
+          uid: currentUser.uid,
+          nama: userData.nama,
+          jenis: jenis,
+          status: status,
+          koordinat: koordinat,
+          selfie: fotoUrl,
+          timestamp: timestamp
+        });
+        
+        toast('Presensi berhasil dicatat', 'success');
+        
+        // Reset UI
+        $('#photoPreview').style.display = 'none';
+        $('#cameraPlaceholder').style.display = 'flex';
+        $('#uploadBtn').disabled = true;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        
+        // Muat ulang riwayat
+        loadPresenceHistory();
+        updatePresenceStatus();
+        
+        // Mulai ulang camera
+        initCameraUI();
+        
+      } catch (error) {
+        console.error('Error uploading presence:', error);
+        toast('Gagal mengupload presensi', 'error');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+      }
+    }
+
+    // Save profile handler
+    async function saveProfileHandler() {
+      try {
+        const nama = $('#nama').value;
+        const alamat = $('#alamat').value;
+        
+        await db.collection('users').doc(currentUser.uid).update({
+          nama: nama,
+          alamat: alamat,
+          updatedAt: getServerTimestamp()
+        });
+        
+        userData.nama = nama;
+        userData.alamat = alamat;
+        
+        toast('Profil berhasil disimpan', 'success');
+        $('#profileDlg').close();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        toast('Gagal menyimpan profil', 'error');
+      }
+    }
+
+    // Logout handler
+    async function logoutHandler() {
+      try {
+        await auth.signOut();
+        toast('Berhasil keluar', 'success');
+        window.location.href = 'index.html';
+      } catch (error) {
+        console.error('Error logging out:', error);
+        toast('Gagal keluar', 'error');
+      }
+    }
+
+    // Submit cuti handler
+    async function submitCutiHandler() {
+      try {
+        const jenis = $('#cutiJenis').value;
+        const tanggal = $('#cutiTanggal').value;
+        const catatan = $('#cutiCatatan').value;
+        
+        if (!tanggal) {
+          toast('Pilih tanggal cuti', 'error');
           return;
         }
         
-        notifList.innerHTML = '';
+        $('#ajukanCutiBtn').disabled = true;
+        $('#ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
         
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const waktu = data.createdAt.toDate();
-          
-          if (!data.read) unreadCount++;
-          
-          const item = document.createElement('div');
-          item.className = 'notif-item';
-          item.innerHTML = `
-            <div class="notif-content">
-              <div style="font-weight:600">${data.title}</div>
-              <div>${data.message}</div>
-              <div style="font-size:12px;opacity:0.7">${firebaseApp.formatDate(waktu)}</div>
-            </div>
-            <div class="notif-actions">
-              <button class="icon-btn mark-read" data-id="${doc.id}" title="Tandai sudah dibaca" style="font-size:16px">
-                <span class="material-symbols-rounded">check_circle</span>
-              </button>
-            </div>
-          `;
-          
-          notifList.appendChild(item);
+        // Simpan ke collection cuti
+        const cutiRef = await db.collection('cuti').add({
+          uid: currentUser.uid,
+          nama: userData.nama,
+          jenis: jenis,
+          tanggal: tanggal,
+          catatan: catatan,
+          status: 'pending',
+          timestamp: getServerTimestamp()
         });
         
-        // Update badge
-        if (unreadCount > 0) {
-          notifBadge.textContent = unreadCount;
-          notifBadge.style.display = 'grid';
-        } else {
-          notifBadge.style.display = 'none';
-        }
-        
-        // Add event listeners for mark as read buttons
-        document.querySelectorAll('.mark-read').forEach(btn => {
-          btn.addEventListener('click', function() {
-            const notifId = this.getAttribute('data-id');
-            markNotificationAsRead(notifId);
-          });
+        // Buat notifikasi untuk admin
+        await db.collection('notifikasi').add({
+          jenis: 'cuti_request',
+          targetRole: 'admin',
+          refId: cutiRef.id,
+          pesan: `${userData.nama} mengajukan cuti ${jenis} tanggal ${tanggal}`,
+          timestamp: getServerTimestamp(),
+          isRead: false
         });
+        
+        toast('Cuti berhasil diajukan', 'success');
+        $('#cutiDlg').close();
+        $('#ajukanCutiBtn').disabled = false;
+        $('#ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
+        
       } catch (error) {
-        console.error('Error loading notifications:', error);
-        firebaseApp.showToast('Gagal memuat notifikasi', 'error');
+        console.error('Error submitting cuti:', error);
+        toast('Gagal mengajukan cuti', 'error');
+        $('#ajukanCutiBtn').disabled = false;
+        $('#ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
       }
     }
 
     // Mark notification as read
     async function markNotificationAsRead(notifId) {
       try {
-        await firebaseApp.db.collection('notifications').doc(notifId).update({
-          read: true
+        await db.collection('notifikasi').doc(notifId).update({
+          isRead: true
         });
-        
-        firebaseApp.showToast('Notifikasi ditandai sudah dibaca', 'success');
-        loadNotifications();
       } catch (error) {
         console.error('Error marking notification as read:', error);
-        firebaseApp.showToast('Gagal menandai notifikasi', 'error');
       }
     }
 
-    // Show profile dialog
-    function showProfileDialog() {
-      document.getElementById('profileDlg').showModal();
-    }
-
-    // Show notifications dialog
-    function showNotificationsDialog() {
-      document.getElementById('notifDlg').showModal();
-    }
-
-    // Show cuti dialog
-    function showCutiDialog() {
-      document.getElementById('cutiTanggal').valueAsDate = new Date();
-      document.getElementById('cutiDlg').showModal();
-    }
-
-    // Save profile
-    async function saveProfile() {
+    // Handle profile picture change
+    async function handleProfilePictureChange(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      
       try {
-        const nama = document.getElementById('nama').value;
-        const alamat = document.getElementById('alamat').value;
+        // Kompres dan upload gambar
+        const compressedBlob = await compressImage(file, 10);
+        const fotoUrl = await uploadToCloudinary(compressedBlob);
         
-        await firebaseApp.db.collection('users').doc(currentUser.uid).update({
-          nama: nama,
-          alamat: alamat
+        // Update profil
+        await db.collection('users').doc(currentUser.uid).update({
+          foto: fotoUrl,
+          updatedAt: getServerTimestamp()
         });
         
-        userData.nama = nama;
-        userData.alamat = alamat;
-        
-        firebaseApp.showToast('Profil berhasil disimpan', 'success');
-        document.getElementById('profileDlg').close();
-      } catch (error) {
-        console.error('Error saving profile:', error);
-        firebaseApp.showToast('Gagal menyimpan profil', 'error');
-      }
-    }
-
-    // Handle profile picture upload
-    async function handleProfilePictureUpload(event) {
-      try {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        const fotoUrl = await firebaseApp.compressImage(file);
-        
-        await firebaseApp.db.collection('users').doc(currentUser.uid).update({
-          foto: fotoUrl
-        });
-        
+        // Update tampilan
+        $('#pfp').src = fotoUrl;
         userData.foto = fotoUrl;
-        document.getElementById('pfp').src = fotoUrl;
         
-        firebaseApp.showToast('Foto profil berhasil diubah', 'success');
+        toast('Foto profil berhasil diubah', 'success');
       } catch (error) {
-        console.error('Error uploading profile picture:', error);
-        firebaseApp.showToast('Gagal mengubah foto profil', 'error');
+        console.error('Error changing profile picture:', error);
+        toast('Gagal mengubah foto profil', 'error');
       }
     }
 
-    // Ajukan cuti
-    async function ajukanCuti() {
+    // Update status presensi
+    async function updatePresenceStatus() {
       try {
-        const jenis = document.getElementById('cutiJenis').value;
-        const tanggal = document.getElementById('cutiTanggal').value;
-        const catatan = document.getElementById('cutiCatatan').value;
+        const now = new Date();
+        const rules = await getTimeRules(currentUser.uid);
         
-        if (!tanggal) {
-          firebaseApp.showToast('Pilih tanggal cuti', 'error');
+        // Cek hari libur
+        const day = now.getDay();
+        if (rules.hari_libur.includes(day)) {
+          $('#statusText').textContent = 'Libur';
+          $('#statusChip').className = 'status s-bad';
           return;
         }
         
-        document.getElementById('ajukanCutiBtn').disabled = true;
-        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
+        // Parse jam dari aturan
+        const [berangkatJam, berangkatMenit] = rules.jam_berangkat.split(':').map(Number);
+        const [pulangJam, pulangMenit] = rules.jam_pulang.split(':').map(Number);
         
-        const cutiData = {
-          uid: currentUser.uid,
-          nama: userData.nama || currentUser.email,
-          jenis: jenis,
-          tanggal: new Date(tanggal),
-          catatan: catatan || '',
-          status: 'pending',
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        // Hitung waktu dalam menit
+        const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+        const berangkatTimeInMinutes = berangkatJam * 60 + berangkatMenit;
+        const pulangTimeInMinutes = pulangJam * 60 + pulangMenit;
         
-        await firebaseApp.db.collection('cuti').add(cutiData);
-        
-        // Buat notifikasi untuk admin
-        const notifData = {
-          uid: 'admin',
-          title: 'Pengajuan Cuti',
-          message: `${userData.nama || currentUser.email} mengajukan cuti ${jenis}`,
-          type: 'cuti',
-          read: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        await firebaseApp.db.collection('notifications').add(notifData);
-        
-        firebaseApp.showToast('Cuti berhasil diajukan', 'success');
-        document.getElementById('cutiDlg').close();
-        
-        document.getElementById('ajukanCutiBtn').disabled = false;
-        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
+        // Tentukan sesi
+        if (currentTimeInMinutes >= berangkatTimeInMinutes - rules.toleransi && 
+            currentTimeInMinutes <= berangkatTimeInMinutes + rules.toleransi) {
+          $('#statusText').textContent = 'Sesi Presensi Berangkat';
+          $('#statusChip').className = 'status s-good';
+        } else if (currentTimeInMinutes >= pulangTimeInMinutes - rules.toleransi && 
+                  currentTimeInMinutes <= pulangTimeInMinutes + rules.toleransi) {
+          $('#statusText').textContent = 'Sesi Presensi Pulang';
+          $('#statusChip').className = 'status s-good';
+        } else {
+          $('#statusText').textContent = 'Di Luar Sesi Presensi';
+          $('#statusChip').className = 'status s-bad';
+        }
       } catch (error) {
-        console.error('Error submitting cuti:', error);
-        firebaseApp.showToast('Gagal mengajukan cuti', 'error');
-        document.getElementById('ajukanCutiBtn').disabled = false;
-        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
-      }
-    }
-
-    // Logout
-    async function logout() {
-      try {
-        await firebaseApp.auth.signOut();
-        firebaseApp.showToast('Berhasil keluar', 'success');
-        window.location.href = 'index.html';
-      } catch (error) {
-        console.error('Error logging out:', error);
-        firebaseApp.showToast('Gagal keluar', 'error');
+        console.error('Error updating presence status:', error);
+        $('#statusText').textContent = 'Error memuat status';
+        $('#statusChip').className = 'status s-bad';
       }
     }
   </script>
