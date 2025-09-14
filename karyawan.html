@@ -4,222 +4,831 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Presensi FUPA — Karyawan</title>
-  <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#FFB300" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
-    /* (UI styles kept similar to reference) */
-    body{font-family:Inter,system-ui;margin:0;background:linear-gradient(180deg,#FFF59D,#FFB300);color:#222}
-    header{display:flex;justify-content:space-between;padding:12px}
-    .card{background:#fff;border-radius:12px;padding:12px;margin:12px}
-    .btn{background:linear-gradient(135deg,#FFB300,#FF8F00);color:#fff;padding:10px;border-radius:10px;border:none;cursor:pointer}
-    #toast{display:none;position:fixed;left:50%;bottom:12px;transform:translateX(-50%);padding:8px 12px;color:#fff;border-radius:8px}
+    :root{
+      --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300; --card:#ffffffcc; --txt:#222; --accent:#673AB7;
+      --soft-shadow: 0 10px 30px rgba(0,0,0,.15); --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter,system-ui; color:var(--txt);
+      background: radial-gradient(1200px 800px at 80% -10%, var(--bg3), transparent),
+                  radial-gradient(1000px 600px at 0% 0%, var(--bg2), transparent),
+                  linear-gradient(180deg, var(--bg1), var(--bg2) 60%, var(--bg3));
+      min-height:100svh; overflow-x:hidden; position:relative;
+    }
+    header{
+      position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 16px; backdrop-filter: blur(8px);
+    }
+    .brand{display:flex; align-items:center; gap:10px}
+    .icons{display:flex; align-items:center; gap:10px}
+    .icon-btn{
+      background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:14px; padding:8px; display:inline-flex; cursor:pointer;
+      box-shadow:var(--soft-shadow);
+    }
+    .chip{
+      background:#fff; padding:8px 12px; border-radius:12px; border:1px solid rgba(0,0,0,.06);
+      box-shadow:var(--soft-shadow); display:inline-flex; align-items:center; gap:8px;
+    }
+    .container{padding:16px}
+    .grid{display:grid; grid-template-columns:1fr; gap:16px}
+    @media(min-width:900px){ .grid{grid-template-columns:1.1fr .9fr} }
+    .card{
+      background:var(--card); border-radius:16px; padding:16px; box-shadow:var(--soft-shadow);
+    }
+    .btn{
+      display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, #FFB300, #FF8F00);
+      color:#fff; border:none; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
+      box-shadow:0 10px 20px rgba(255,143,0,.25);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .status{font-weight:800; padding:6px 10px; border-radius:12px; color:#fff; display:inline-flex; align-items:center; gap:6px}
+    .s-good{background:var(--good)}
+    .s-warn{background:var(--warn)}
+    .s-bad{background:var(--bad)}
+    video, canvas, img{width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover}
+    .fab{
+      position:fixed; right:16px; bottom:16px; z-index:6; width:56px; height:56px; border-radius:50%;
+      display:grid; place-items:center; background:linear-gradient(135deg,#FF8F00,#FF6F00); color:#fff; box-shadow:var(--soft-shadow);
+      cursor:pointer;
+    }
+    dialog{
+      border:none; border-radius:16px; width:min(520px,90vw); padding:0; box-shadow:var(--soft-shadow);
+      animation:pop .2s ease; overflow:hidden;
+    }
+    @keyframes pop{ from{transform:translateY(10px); opacity:.5} to{transform:translateY(0); opacity:1} }
+    .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff}
+    .dlg-body{padding:14px; background:#fff}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .input{display:flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px; padding:8px 10px}
+    .input input, .input select{border:none; outline:none; background:transparent; font-size:14px; width:100%}
+    .toast{ 
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%); 
+      color:#fff; padding:10px 14px; border-radius:12px; 
+      box-shadow:var(--soft-shadow); z-index:10; display:none; 
+    }
+    .notif-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .notif-content {
+      flex: 1;
+    }
+    .notif-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .riwayat-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .riwayat-jenis {
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .riwayat-time {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-top: 4px;
+    }
+    .filter-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .filter-select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: white;
+    }
+    .badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: red;
+      color: white;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      display: grid;
+      place-items: center;
+    }
+    .camera-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .install-btn {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: linear-gradient(135deg, #673AB7, #4527A0);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--soft-shadow);
+      display: none;
+    }
+    .camera-placeholder {
+      width: 100%;
+      height: 300px;
+      background: #333;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
   <header>
-    <div><b>Presensi Karyawan</b><div id="serverTime" style="font-size:12px;opacity:.8">—</div></div>
-    <div>
-      <button id="notifBtn" class="btn">Notifikasi <span id="notifBadge" style="background:red;color:#fff;border-radius:10px;padding:2px 6px;margin-left:6px">0</span></button>
-      <button id="profileBtn" class="btn">Profil</button>
+    <div class="brand">
+      <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
+      <div>
+        <div style="font-weight:800">Presensi Karyawan</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 08:45:32</div>
+      </div>
+    </div>
+    <div class="icons">
+      <div style="position:relative">
+        <button id="notifBtn" class="icon-btn" title="Notifikasi">
+          <span class="material-symbols-rounded">notifications</span>
+          <span id="notifBadge" class="badge" style="display:none">0</span>
+        </button>
+      </div>
+      <button id="profileBtn" class="icon-btn" title="Profil">
+        <span class="material-symbols-rounded">account_circle</span>
+      </button>
     </div>
   </header>
 
-  <div class="card">
-    <h3>Ambil presensi</h3>
-    <div><span id="statusText">—</span> | <span id="locText">koordinat: -</span></div>
-    <div style="margin-top:10px">
-      <video id="video" autoplay playsinline style="width:100%;max-height:320px;background:#111"></video>
-      <canvas id="canvas" style="display:none"></canvas>
+  <div class="container">
+    <div class="grid">
+      <section class="card">
+        <h3 style="margin:0 0 8px">Ambil presensi</h3>
+        <div class="row" style="justify-content:space-between">
+          <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Sesi Presensi Berangkat</span></span>
+          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
+        </div>
+        <div style="margin-top:10px">
+          <div class="camera-placeholder" id="cameraContainer">
+            <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+          </div>
+        </div>
+        <div class="camera-controls">
+          <div class="input">
+            <span class="material-symbols-rounded">assignment</span>
+            <select id="jenis">
+              <option value="berangkat">Presensi berangkat</option>
+              <option value="pulang">Presensi pulang</option>
+            </select>
+          </div>
+          <div class="row">
+            <button id="snapBtn" class="btn"><span class="material-symbols-rounded">photo_camera</span> Ambil selfie</button>
+            <button id="uploadBtn" class="btn" disabled><span class="material-symbols-rounded">cloud_upload</span> Upload</button>
+          </div>
+        </div>
+        <div class="hint" style="opacity:.8;margin-top:8px">
+          Presensi hanya pada 05:30–06:00 (berangkat) dan 10:00–11:00 (pulang). Di luar ini akan ditolak atau ditandai terlambat.
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="filter-row">
+          <h3 style="margin:0">Riwayat presensi</h3>
+          <select id="historyFilter" class="filter-select">
+            <option value="20">20 terbaru</option>
+            <option value="50">50 terbaru</option>
+            <option value="100">100 terbaru</option>
+            <option value="all">Semua</option>
+          </select>
+        </div>
+        <div id="logList" style="display:grid; gap:8px; max-height:400px; overflow-y:auto">
+          <!-- Riwayat presensi akan dimuat di sini -->
+        </div>
+      </section>
     </div>
-    <div style="margin-top:10px">
-      <select id="jenis"><option value="berangkat">Presensi berangkat</option><option value="pulang">Presensi pulang</option></select>
-      <input type="file" id="fileInput" accept="image/*" style="display:none" />
-      <button id="snapBtn" class="btn">Ambil Selfie</button>
-      <button id="uploadBtn" class="btn" disabled>Upload</button>
+  </div>
+
+  <!-- FAB cuti -->
+  <button class="fab" id="cutiFab" title="Ajukan cuti">
+    <span class="material-symbols-rounded">event</span>
+  </button>
+
+  <!-- Install button -->
+  <button class="install-btn" id="installBtn" style="display:none">
+    <span class="material-symbols-rounded">download</span> Install App
+  </button>
+
+  <!-- Dialog profil -->
+  <dialog id="profileDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">account_circle</span><b>Profil</b></div>
+      <button class="icon-btn" onclick="document.getElementById('profileDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
-  </div>
+    <div class="dlg-body">
+      <div class="row" style="align-items:flex-end">
+        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama lengkap" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
+      </div>
+      <div class="row" style="justify-content:space-between; margin-top:12px">
+        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
+      </div>
+    </div>
+  </dialog>
 
-  <div class="card">
-    <h3>Riwayat presensi</h3>
-    <select id="historyFilter"><option value="20">20</option><option value="50">50</option><option value="all">All</option></select>
-    <div id="logList"></div>
-  </div>
+  <!-- Dialog notifikasi -->
+  <dialog id="notifDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">notifications</span><b>Notifikasi</b></div>
+      <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body" id="notifList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
+      <!-- Notifikasi akan dimuat di sini -->
+    </div>
+  </dialog>
 
-  <div class="card">
-    <button id="cutiFab" class="btn">Ajukan Cut i</button>
-  </div>
+  <!-- Dialog cuti -->
+  <dialog id="cutiDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">event</span><b>Ajukan cuti</b></div>
+      <button class="icon-btn" onclick="document.getElementById('cutiDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body">
+      <div class="row">
+        <div class="input"><span class="material-symbols-rounded">category</span>
+          <select id="cutiJenis">
+            <option value="izin">Izin</option>
+            <option value="sakit">Sakit</option>
+            <option value="cuti">Cuti</option>
+          </select>
+        </div>
+        <div class="input"><span class="material-symbols-rounded">today</span><input id="cutiTanggal" type="date" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">notes</span><input id="cutiCatatan" placeholder="Keterangan (opsional)" /></div>
+        <button id="ajukanCutiBtn" class="btn"><span class="material-symbols-rounded">send</span> Ajukan</button>
+      </div>
+    </div>
+  </dialog>
 
-  <div id="toast"></div>
+  <div class="toast" id="toast"></div>
 
-  <!-- Firebase + libs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-
-  <!-- CompressorJS -->
-  <script src="https://cdn.jsdelivr.net/npm/compressorjs@1.1.1/dist/compressor.min.js"></script>
-
-  <!-- app.js (shared logic) -->
   <script src="app.js"></script>
-
   <script>
-    // initialize firebase (same config)
-    const firebaseConfig = {
-      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
-      authDomain: "fupa-snack.firebaseapp.com",
-      projectId: "fupa-snack",
-      storageBucket: "fupa-snack.firebasestorage.app",
-      messagingSenderId: "972524876738",
-      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+    // Inisialisasi variabel global
+    let currentUser = null;
+    let stream = null;
+    let capturedImage = null;
+    let notifListener = null;
+    let presenceListener = null;
 
-    const toastEl = document.getElementById('toast');
-    function toast(msg, color='#111') {
-      toastEl.style.backgroundColor = color;
-      toastEl.textContent = msg;
-      toastEl.style.display = 'block';
-      setTimeout(()=> toastEl.style.display='none', 3000);
-    }
-
-    // require auth state
-    auth.onAuthStateChanged(async user => {
-      if (!user) {
-        // not logged in -> redirect to login
-        toast('Belum login — mengarahkan ke login', '#c62828');
-        setTimeout(()=> location.href='index.html', 800);
-        return;
-      }
-      // load profile
-      window.userProfile = await FupaApp.loadProfileAndEnsure(user.uid);
-      // attach certain client fields
-      window.currentUser = {
-        uid: user.uid,
-        email: user.email,
-        name: window.userProfile.name || user.email
-      };
-      // start server time tick
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-      // start camera
-      startCamera();
-      // notifications listener
-      window.unsubscribeNotifs = FupaApp.listenNotificationsFor({uid:user.uid});
-      window.onNotificationsUpdate = (arr) => {
-        // filter to those relevant to this user
-        const unread = arr.filter(n => !n.isRead && (!n.targetRole || n.targetRole==='karyawan' || n.uid===user.uid)).length;
-        document.getElementById('notifBadge').textContent = unread;
-      };
-      loadHistory();
-    });
-
-    // server time via Date (client) visible; for true serverTime, use FupaApp.getServerTimestamp()
-    function updateServerTime() {
-      const now = new Date();
-      document.getElementById('serverTime').textContent = now.toLocaleString('id-ID');
-    }
-
-    // Camera
-    async function startCamera() {
-      const video = document.getElementById('video');
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-        video.srcObject = s;
-      } catch (e) {
-        console.error('Camera error', e);
-        toast('Tidak dapat mengakses kamera', '#c62828');
-      }
-    }
-
-    document.getElementById('snapBtn').addEventListener('click', () => {
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        // store selected file in window for upload step
-        window.latestSelfieBlob = blob;
-        document.getElementById('uploadBtn').disabled = false;
-        toast('Selfie diambil', '#2e7d32');
-      }, 'image/jpeg', 0.9);
-    });
-
-    document.getElementById('uploadBtn').addEventListener('click', async () => {
-      if (!window.latestSelfieBlob) return toast('Ambil selfie dulu', '#c62828');
-      const jenis = document.getElementById('jenis').value;
-      const user = { uid: firebase.auth().currentUser.uid, name: (window.userProfile && window.userProfile.name) || firebase.auth().currentUser.email };
-      document.getElementById('uploadBtn').disabled = true;
-      const res = await FupaApp.submitPresensi(window.latestSelfieBlob, jenis, user);
-      if (res.ok) loadHistory();
-      document.getElementById('uploadBtn').disabled = false;
-    });
-
-    // load history
-    async function loadHistory() {
-      const uid = firebase.auth().currentUser.uid;
-      const q = db.collection('presensi').where('uid','==',uid).orderBy('waktu','desc').limit(50);
-      const snap = await q.get();
-      const container = document.getElementById('logList');
-      container.innerHTML = '';
-      snap.forEach(d => {
-        const r = d.data();
-        const node = document.createElement('div');
-        node.innerHTML = `<div style="padding:8px;border-bottom:1px solid #eee">
-          <div><b>${r.jenis}</b> — ${r.status}</div>
-          <div style="font-size:13px;color:#666">${r.waktu && r.waktu.toDate ? r.waktu.toDate().toLocaleString('id-ID') : r.waktu}</div>
-        </div>`;
-        container.appendChild(node);
-      });
-    }
-
-    // Cuti
-    document.getElementById('cutiFab').addEventListener('click', async () => {
-      const tanggal = prompt('Tanggal cuti (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
-      if (!tanggal) return;
-      const jenis = prompt('Jenis (cuti/sakit/izin):','cuti');
-      const keterangan = prompt('Keterangan (opsional):','');
-      await FupaApp.ajukanCuti(firebase.auth().currentUser.uid, window.currentUser.name, tanggal, jenis, keterangan);
-      loadHistory();
-    });
-
-    // Notif & profile buttons
-    document.getElementById('notifBtn').addEventListener('click', async () => {
-      // fetch notifikasi for this uid or targetRole='karyawan'
-      const q = db.collection('notifikasi').orderBy('timestamp','desc').limit(40);
-      const snap = await q.get();
-      let out = '';
-      snap.forEach(d => {
-        const r = d.data();
-        if (r.uid === firebase.auth().currentUser.uid || r.targetRole === 'karyawan' || !r.targetRole) {
-          out += `${r.pesan} — ${r.timestamp && r.timestamp.toDate ? r.timestamp.toDate().toLocaleString('id-ID') : ''}\n`;
-          // mark read
-          db.collection('notifikasi').doc(d.id).update({ isRead: true }).catch(()=>{});
+    document.addEventListener('DOMContentLoaded', function() {
+      // Cek status auth
+      fupaApp.auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          await loadUserData();
+          initCamera();
+          initGeolocation();
+          loadPresenceHistory();
+          setupNotifications();
+          updateServerTime();
+          updatePresenceStatus();
+        } else {
+          window.location.href = 'index.html';
         }
       });
-      alert(out || 'Tidak ada notifikasi');
+
+      // Event listeners
+      document.getElementById('snapBtn').addEventListener('click', captureImage);
+      document.getElementById('uploadBtn').addEventListener('click', uploadPresence);
+      document.getElementById('profileBtn').addEventListener('click', showProfileDialog);
+      document.getElementById('notifBtn').addEventListener('click', showNotificationsDialog);
+      document.getElementById('cutiFab').addEventListener('click', showCutiDialog);
+      document.getElementById('saveProfileBtn').addEventListener('click', saveProfile);
+      document.getElementById('logoutBtn').addEventListener('click', logout);
+      document.getElementById('ajukanCutiBtn').addEventListener('click', ajukanCuti);
+      document.getElementById('historyFilter').addEventListener('change', loadPresenceHistory);
+      document.getElementById('pfpFile').addEventListener('change', handleProfilePictureChange);
     });
 
-    document.getElementById('profileBtn').addEventListener('click', async () => {
-      // simple profile edit prompts per PEDOMAN
-      const name = prompt('Nama lengkap:', (window.userProfile && window.userProfile.name) || '');
-      const alamat = prompt('Alamat:', (window.userProfile && window.userProfile.alamat) || '');
-      await db.collection('users').doc(firebase.auth().currentUser.uid).update({ name, alamat });
-      toast('Profil disimpan', '#2e7d32');
-      window.userProfile.name = name;
-      window.userProfile.alamat = alamat;
-    });
+    // Fungsi untuk memuat data user
+    async function loadUserData() {
+      try {
+        const userDoc = await fupaApp.db.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          document.getElementById('nama').value = userData.nama || '';
+          document.getElementById('alamat').value = userData.alamat || '';
+          document.getElementById('pfp').src = userData.foto || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(currentUser.email)}&backgroundColor=ffb300,ffd54f&radius=20`;
+          
+          // Tampilkan popup jika nama dan alamat kosong
+          if (!userData.nama || !userData.alamat) {
+            setTimeout(() => {
+              showProfileDialog();
+              fupaApp.showToast('Lengkapi profil Anda terlebih dahulu', 'info');
+            }, 1000);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        fupaApp.showToast('Gagal memuat data profil', 'error');
+      }
+    }
 
-    // Logout on double-click header (quick act)
-    document.querySelector('header').addEventListener('dblclick', async () => {
-      await auth.signOut();
-      location.href='index.html';
-    });
+    // Fungsi untuk inisialisasi kamera
+    async function initCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const videoElement = document.createElement('video');
+        videoElement.srcObject = stream;
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;
+        
+        const cameraContainer = document.getElementById('cameraContainer');
+        cameraContainer.innerHTML = '';
+        cameraContainer.appendChild(videoElement);
+        
+        // Simpan video element untuk digunakan nanti
+        window.cameraVideo = videoElement;
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        document.getElementById('cameraContainer').innerHTML = `
+          <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
+          <div>Kamera tidak dapat diakses</div>
+        `;
+        fupaApp.showToast('Tidak dapat mengakses kamera', 'error');
+      }
+    }
+
+    // Fungsi untuk inisialisasi geolocation
+    function initGeolocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            document.getElementById('locText').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            document.getElementById('locText').textContent = 'Lokasi tidak tersedia';
+            fupaApp.showToast('Tidak dapat mengakses lokasi', 'error');
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      } else {
+        document.getElementById('locText').textContent = 'Geolocation tidak didukung';
+      }
+    }
+
+    // Fungsi untuk mengambil gambar
+    function captureImage() {
+      if (!window.cameraVideo) {
+        fupaApp.showToast('Kamera belum siap', 'error');
+        return;
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = window.cameraVideo.videoWidth;
+      canvas.height = window.cameraVideo.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(window.cameraVideo, 0, 0, canvas.width, canvas.height);
+      
+      // Tampilkan preview gambar
+      const preview = document.createElement('img');
+      preview.src = canvas.toDataURL('image/jpeg');
+      
+      const cameraContainer = document.getElementById('cameraContainer');
+      cameraContainer.innerHTML = '';
+      cameraContainer.appendChild(preview);
+      
+      // Simpan gambar yang diambil
+      canvas.toBlob(blob => {
+        capturedImage = blob;
+        document.getElementById('uploadBtn').disabled = false;
+      }, 'image/jpeg', 0.9);
+      
+      fupaApp.showToast('Foto berhasil diambil', 'success');
+    }
+
+    // Fungsi untuk upload presensi
+    async function uploadPresence() {
+      const jenis = document.getElementById('jenis').value;
+      
+      if (!capturedImage) {
+        fupaApp.showToast('Ambil foto terlebih dahulu', 'error');
+        return;
+      }
+      
+      try {
+        document.getElementById('uploadBtn').disabled = true;
+        document.getElementById('uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+        
+        // Dapatkan koordinat
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        });
+        
+        const coords = `${position.coords.latitude}, ${position.coords.longitude}`;
+        document.getElementById('locText').textContent = coords;
+        
+        // Kompres dan upload gambar
+        const compressedImage = await fupaApp.compressImage(capturedImage);
+        const imageUrl = await fupaApp.uploadToCloudinary(compressedImage);
+        
+        // Dapatkan waktu server
+        const timestamp = firebase.firestore.FieldValue.serverTimestamp();
+        
+        // Tentukan status presensi
+        const status = await fupaApp.getPresenceStatus(currentUser.uid, new Date(), jenis);
+        
+        // Simpan ke Firestore
+        await fupaApp.db.collection('presensi').add({
+          uid: currentUser.uid,
+          nama: document.getElementById('nama').value || currentUser.email,
+          jenis: jenis,
+          status: status,
+          koordinat: coords,
+          selfie: imageUrl,
+          waktu: timestamp
+        });
+        
+        fupaApp.showToast('Presensi berhasil dicatat', 'success');
+        
+        // Reset state
+        capturedImage = null;
+        document.getElementById('uploadBtn').disabled = true;
+        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        
+        // Muat ulang riwayat
+        loadPresenceHistory();
+        
+      } catch (error) {
+        console.error('Error uploading presence:', error);
+        fupaApp.showToast('Gagal mencatat presensi', 'error');
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+      }
+    }
+
+    // Fungsi untuk memuat riwayat presensi
+    async function loadPresenceHistory() {
+      try {
+        const limit = document.getElementById('historyFilter').value;
+        let query = fupaApp.db.collection('presensi')
+          .where('uid', '==', currentUser.uid)
+          .orderBy('waktu', 'desc');
+        
+        if (limit !== 'all') {
+          query = query.limit(parseInt(limit));
+        }
+        
+        const snapshot = await query.get();
+        const logList = document.getElementById('logList');
+        logList.innerHTML = '';
+        
+        if (snapshot.empty) {
+          logList.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7">Belum ada riwayat presensi</div>';
+          return;
+        }
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const waktu = data.waktu ? data.waktu.toDate() : new Date();
+          const waktuStr = fupaApp.formatDate(waktu);
+          
+          // Tentukan class status
+          let statusClass = 's-good';
+          if (data.status === 'Terlambat') statusClass = 's-warn';
+          if (data.status === 'Di Luar Sesi Presensi' || data.status === 'Libur') statusClass = 's-bad';
+          
+          const item = document.createElement('div');
+          item.className = 'riwayat-item';
+          item.innerHTML = `
+            <div class="riwayat-jenis">
+              <span class="material-symbols-rounded">${data.jenis === 'berangkat' ? 'login' : 'logout'}</span>
+              ${data.jenis}
+              <span class="status ${statusClass}" style="margin-left:auto;font-size:12px">
+                ${data.status}
+              </span>
+            </div>
+            <div class="riwayat-time">
+              ${waktuStr}
+            </div>
+          `;
+          
+          logList.appendChild(item);
+        });
+      } catch (error) {
+        console.error('Error loading presence history:', error);
+        fupaApp.showToast('Gagal memuat riwayat presensi', 'error');
+      }
+    }
+
+    // Fungsi untuk mengatur notifikasi
+    function setupNotifications() {
+      // Hentikan listener sebelumnya jika ada
+      if (notifListener) notifListener();
+      
+      // Setup real-time listener untuk notifikasi
+      notifListener = fupaApp.db.collection('notifikasi')
+        .where('uid', '==', currentUser.uid)
+        .orderBy('timestamp', 'desc')
+        .onSnapshot(snapshot => {
+          const notifList = document.getElementById('notifList');
+          const notifBadge = document.getElementById('notifBadge');
+          let unreadCount = 0;
+          
+          notifList.innerHTML = '';
+          
+          if (snapshot.empty) {
+            notifList.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7">Tidak ada notifikasi</div>';
+            notifBadge.style.display = 'none';
+            return;
+          }
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!data.isRead) unreadCount++;
+            
+            const item = document.createElement('div');
+            item.className = 'notif-item';
+            item.innerHTML = `
+              <div class="notif-content">
+                <div style="font-weight:600">${data.pesan}</div>
+                <div style="font-size:12px;opacity:0.7">${data.timestamp ? data.timestamp.toDate().toLocaleString('id-ID') : ''}</div>
+              </div>
+              <div class="notif-actions">
+                <button class="icon-btn mark-read" data-id="${doc.id}" title="Tandai sudah dibaca" style="font-size:16px">
+                  <span class="material-symbols-rounded">check_circle</span>
+                </button>
+              </div>
+            `;
+            
+            notifList.appendChild(item);
+          });
+          
+          // Update badge
+          if (unreadCount > 0) {
+            notifBadge.textContent = unreadCount;
+            notifBadge.style.display = 'grid';
+          } else {
+            notifBadge.style.display = 'none';
+          }
+          
+          // Tambahkan event listener untuk mark as read
+          document.querySelectorAll('.mark-read').forEach(btn => {
+            btn.addEventListener('click', function() {
+              const notifId = this.getAttribute('data-id');
+              markNotificationAsRead(notifId);
+            });
+          });
+        }, error => {
+          console.error('Error in notifications listener:', error);
+        });
+    }
+
+    // Fungsi untuk menandai notifikasi sebagai sudah dibaca
+    async function markNotificationAsRead(notifId) {
+      try {
+        await fupaApp.db.collection('notifikasi').doc(notifId).update({
+          isRead: true
+        });
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    }
+
+    // Fungsi untuk mengajukan cuti
+    async function ajukanCuti() {
+      const jenis = document.getElementById('cutiJenis').value;
+      const tanggal = document.getElementById('cutiTanggal').value;
+      const catatan = document.getElementById('cutiCatatan').value;
+      
+      if (!tanggal) {
+        fupaApp.showToast('Pilih tanggal cuti', 'error');
+        return;
+      }
+      
+      try {
+        document.getElementById('ajukanCutiBtn').disabled = true;
+        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
+        
+        // Simpan pengajuan cuti
+        const cutiRef = await fupaApp.db.collection('cuti').add({
+          uid: currentUser.uid,
+          nama: document.getElementById('nama').value || currentUser.email,
+          jenis: jenis,
+          tanggal: new Date(tanggal),
+          catatan: catatan,
+          status: 'pending',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // Buat notifikasi untuk admin
+        await fupaApp.db.collection('notifikasi').add({
+          jenis: 'cuti_request',
+          targetRole: 'admin',
+          refId: cutiRef.id,
+          pesan: `${document.getElementById('nama').value || currentUser.email} mengajukan cuti ${jenis} pada ${new Date(tanggal).toLocaleDateString('id-ID')}`,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          isRead: false
+        });
+        
+        fupaApp.showToast('Cuti berhasil diajukan', 'success');
+        document.getElementById('cutiDlg').close();
+        
+      } catch (error) {
+        console.error('Error submitting cuti:', error);
+        fupaApp.showToast('Gagal mengajukan cuti', 'error');
+      } finally {
+        document.getElementById('ajukanCutiBtn').disabled = false;
+        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
+      }
+    }
+
+    // Fungsi untuk memperbarui status presensi
+    async function updatePresenceStatus() {
+      try {
+        const now = new Date();
+        const status = await fupaApp.getPresenceStatus(currentUser.uid, now, document.getElementById('jenis').value);
+        
+        const statusElement = document.getElementById('statusText');
+        const statusChip = document.getElementById('statusChip');
+        
+        statusElement.textContent = status;
+        
+        // Update warna status
+        if (status === 'Tepat Waktu') {
+          statusChip.className = 'status s-good';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span id="statusText">Tepat Waktu</span>';
+        } else if (status === 'Terlambat') {
+          statusChip.className = 'status s-warn';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">Terlambat</span>';
+        } else if (status === 'Libur') {
+          statusChip.className = 'status s-bad';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">Libur</span>';
+        } else {
+          statusChip.className = 'status s-bad';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">block</span><span id="statusText">Di Luar Sesi Presensi</span>';
+        }
+      } catch (error) {
+        console.error('Error updating presence status:', error);
+      }
+    }
+
+    // Fungsi untuk memperbarui waktu server
+    function updateServerTime() {
+      const now = new Date();
+      document.getElementById('serverTime').textContent = fupaApp.formatDate(now);
+      setTimeout(updateServerTime, 1000);
+    }
+
+    // Fungsi untuk menangani perubahan foto profil
+    async function handleProfilePictureChange(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      try {
+        // Kompres dan upload gambar
+        const compressedImage = await fupaApp.compressImage(file);
+        const imageUrl = await fupaApp.uploadToCloudinary(compressedImage);
+        
+        // Update foto profil
+        document.getElementById('pfp').src = imageUrl;
+        
+        // Simpan ke Firestore
+        await fupaApp.db.collection('users').doc(currentUser.uid).update({
+          foto: imageUrl
+        });
+        
+        fupaApp.showToast('Foto profil berhasil diubah', 'success');
+      } catch (error) {
+        console.error('Error changing profile picture:', error);
+        fupaApp.showToast('Gagal mengubah foto profil', 'error');
+      }
+    }
+
+    // Fungsi untuk menyimpan profil
+    async function saveProfile() {
+      const nama = document.getElementById('nama').value;
+      const alamat = document.getElementById('alamat').value;
+      
+      if (!nama || !alamat) {
+        fupaApp.showToast('Lengkapi nama dan alamat', 'error');
+        return;
+      }
+      
+      try {
+        document.getElementById('saveProfileBtn').disabled = true;
+        document.getElementById('saveProfileBtn').innerHTML = '<span class="spinner"></span> Menyimpan...';
+        
+        // Update data user
+        await fupaApp.db.collection('users').doc(currentUser.uid).update({
+          nama: nama,
+          alamat: alamat
+        });
+        
+        fupaApp.showToast('Profil berhasil disimpan', 'success');
+        document.getElementById('profileDlg').close();
+        
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        fupaApp.showToast('Gagal menyimpan profil', 'error');
+      } finally {
+        document.getElementById('saveProfileBtn').disabled = false;
+        document.getElementById('saveProfileBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan';
+      }
+    }
+
+    // Fungsi untuk logout
+    async function logout() {
+      try {
+        // Hentikan semua listener
+        if (notifListener) notifListener();
+        if (presenceListener) presenceListener();
+        
+        // Stop kamera
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Logout dari Firebase
+        await fupaApp.auth.signOut();
+        window.location.href = 'index.html';
+      } catch (error) {
+        console.error('Error logging out:', error);
+        fupaApp.showToast('Gagal keluar', 'error');
+      }
+    }
+
+    // Fungsi untuk menampilkan dialog profil
+    function showProfileDialog() {
+      document.getElementById('profileDlg').showModal();
+    }
+
+    // Fungsi untuk menampilkan dialog notifikasi
+    function showNotificationsDialog() {
+      document.getElementById('notifDlg').showModal();
+    }
+
+    // Fungsi untuk menampilkan dialog cuti
+    function showCutiDialog() {
+      // Set default date to today
+      document.getElementById('cutiTanggal').valueAsDate = new Date();
+      document.getElementById('cutiDlg').showModal();
+    }
   </script>
 </body>
 </html>
