@@ -1,5 +1,5 @@
 {
-  "name": "FUPA Presensi",
+  "name": "Presensi FUPA",
   "short_name": "FUPA Presensi",
   "description": "Sistem presensi digital untuk FUPA Snack",
   "start_url": "/index.html",
@@ -18,7 +18,5 @@
       "sizes": "512x512",
       "type": "image/svg"
     }
-  ],
-  "categories": ["business", "productivity"],
-  "lang": "id"
+  ]
 }
