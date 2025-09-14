@@ -1,1 +1,1108 @@
-p
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Presensi FUPA — Admin</title>
+  <meta name="theme-color" content="#FFB300" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300; --card:#ffffffcc; --txt:#222; --accent:#673AB7;
+      --soft-shadow: 0 10px 30px rgba(0,0,0,.15); --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter,system-ui; color:var(--txt);
+      background: radial-gradient(1200px 800px at 80% -10%, var(--bg3), transparent),
+                  radial-gradient(1000px 600px at 0% 0%, var(--bg2), transparent),
+                  linear-gradient(180deg, var(--bg1), var(--bg2) 60%, var(--bg3));
+      min-height:100svh; overflow-x:hidden; position:relative;
+    }
+    header{ position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 16px; backdrop-filter: blur(8px); }
+    .brand{display:flex; align-items:center; gap:10px}
+    .icons{display:flex; align-items:center; gap:10px}
+    .icon-btn{ background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:14px; padding:8px; display:inline-flex; cursor:pointer;
+      box-shadow:var(--soft-shadow); }
+    .container{ padding:16px }
+    .card{ background:var(--card); border-radius:16px; padding:16px; box-shadow:var(--soft-shadow); }
+    .grid{ display:grid; grid-template-columns:1fr; gap:16px }
+    @media(min-width:1024px){ .grid{ grid-template-columns:1fr .7fr } }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+    .input{ display:flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px; padding:8px 10px }
+    .input input, .input select, .input textarea{ border:none; outline:none; background:transparent; font-size:14px; width:100% }
+    .btn{
+      display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, #FFB300, #FF8F00);
+      color:#fff; border:none; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
+      box-shadow:0 10px 20px rgba(255,143,0,.25);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    table{ width:100%; border-collapse:separate; border-spacing:0 8px }
+    th, td{ text-align:left; padding:10px 12px; background:#fff }
+    th{ position:sticky; top:0; z-index:1; background: #FFD54F; }
+    tr{ box-shadow:0 1px 0 rgba(0,0,0,.06) }
+    .fab{
+      position:fixed; right:16px; bottom:16px; z-index:6; width:56px; height:56px; border-radius:50%;
+      display:grid; place-items:center; background:linear-gradient(135deg,#FF8F00,#FF6F00); color:#fff; box-shadow:var(--soft-shadow);
+      cursor:pointer;
+    }
+    dialog{ border:none; border-radius:16px; width:min(720px,92vw); padding:0; box-shadow:var(--soft-shadow); overflow:hidden; }
+    .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff}
+    .dlg-body{padding:14px; background:#fff}
+    .status{font-weight:800; padding:6px 10px; border-radius:12px; color:#fff; display:inline-flex; align-items:center; gap:6px}
+    .s-good{background:var(--good)} .s-warn{background:var(--warn)} .s-bad{background:var(--bad)}
+    .toast{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#111; color:#fff; padding:10px 14px;
+      border-radius:12px; box-shadow:var(--soft-shadow); z-index:10; display:none; }
+    .filter-section {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .filter-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .filter-select, .filter-input {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: white;
+    }
+    .badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: red;
+      color: white;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      display: grid;
+      place-items: center;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .cuti-item {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+    }
+    .cuti-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .user-list {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 8px;
+    }
+    .user-item {
+      padding: 6px 8px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .user-item:hover {
+      background-color: #f5f5f5;
+    }
+    .user-item.selected {
+      background-color: #FFD54F;
+      color: #222;
+    }
+    .install-btn {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: linear-gradient(135deg, #673AB7, #4527A0);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--soft-shadow);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
+      <div>
+        <div style="font-weight:800">Panel Admin</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
+      </div>
+    </div>
+    <div class="icons">
+      <div style="position:relative">
+        <button id="notifBtn" class="icon-btn" title="Permintaan cuti">
+          <span class="material-symbols-rounded">notifications_active</span>
+          <span id="notifBadge" class="badge" style="display:none">0</span>
+        </button>
+      </div>
+      <button id="profileBtn" class="icon-btn" title="Profil & akun">
+        <span class="material-symbols-rounded">admin_panel_settings</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <section class="card">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">Riwayat presensi</h3>
+          <div class="row">
+            <button id="exportCsv" class="btn"><span class="material-symbols-rounded">download</span> Ekspor CSV</button>
+          </div>
+        </div>
+        
+        <div class="filter-section">
+          <div class="filter-item">
+            <span class="material-symbols-rounded">person_search</span>
+            <input id="fNama" class="filter-input" placeholder="Filter nama" />
+          </div>
+          <div class="filter-item">
+            <span class="material-symbols-rounded">today</span>
+            <select id="fPeriode" class="filter-select">
+              <option value="harian">Harian</option>
+              <option value="mingguan">Mingguan</option>
+              <option value="bulanan">Bulanan</option>
+              <option value="tahunan">Tahunan</option>
+              <option value="custom">Periode Kustom</option>
+            </select>
+          </div>
+          <div class="filter-item" id="customDateRange" style="display:none">
+            <input id="fDari" type="date" class="filter-input" />
+            <span>s/d</span>
+            <input id="fSampai" type="date" class="filter-input" />
+          </div>
+          <div class="filter-item">
+            <select id="fShow" class="filter-select">
+              <option value="20">Tampilkan 20</option>
+              <option value="50">Tampilkan 50</option>
+              <option value="100">Tampilkan 100</option>
+              <option value="all">Tampilkan Semua</option>
+            </select>
+            <button id="applyFilter" class="btn"><span class="material-symbols-rounded">filter_alt</span> Terapkan</button>
+          </div>
+        </div>
+        
+        <div style="max-height:60vh; overflow:auto; margin-top:10px">
+          <table>
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Nama</th>
+                <th>Jenis</th>
+                <th>Status</th>
+                <th>Koordinat</th>
+                <th>Selfie</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr>
+                <td colspan="6" style="text-align:center">Memuat data presensi...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3 style="margin:0 0 8px">Pengaturan & pengumuman</h3>
+        <div class="row">
+          <div class="input">
+            <span class="material-symbols-rounded">event_busy</span>
+            <select id="wajibHari">
+              <option value="default">Default (Sesuai aturan)</option>
+              <option value="wajib">Wajib presensi hari ini</option>
+              <option value="libur">Libur (Tidak wajib presensi)</option>
+            </select>
+          </div>
+          <button id="saveSchedule" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="input" style="flex:1"><span class="material-symbols-rounded">campaign</span>
+            <textarea id="announceText" placeholder="Tulis pengumuman untuk karyawan" rows="3" style="width:100%"></textarea>
+          </div>
+          <div class="input">
+            <span class="material-symbols-rounded">person</span>
+            <select id="announceTarget">
+              <option value="all">Semua Karyawan</option>
+              <option value="specific">Karyawan Tertentu</option>
+            </select>
+          </div>
+          <button id="sendAnnounce" class="btn"><span class="material-symbols-rounded">send</span> Kirim</button>
+        </div>
+        <div id="userSelection" style="display:none; margin-top:10px">
+          <div class="user-list" id="userList">
+            <!-- Daftar user akan dimuat di sini -->
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- FAB pengumuman cepat -->
+  <button class="fab" id="timeRulesFab" title="Aturan Waktu">
+    <span class="material-symbols-rounded">schedule</span>
+  </button>
+
+  <!-- Install button -->
+  <button class="install-btn" id="installBtn" style="display:none">
+    <span class="material-symbols-rounded">download</span> Install App
+  </button>
+
+  <!-- Dialog profil admin + create akun -->
+  <dialog id="profileDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">admin_panel_settings</span><b>Profil & Akun</b></div>
+      <button class="icon-btn" onclick="document.getElementById('profileDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body">
+      <div class="row" style="align-items:flex-end">
+        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
+      </div>
+      <div class="row" style="justify-content:space-between; margin-top:12px">
+        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
+      </div>
+
+      <hr style="margin:16px 0; opacity:.3" />
+
+      <h4 style="margin:0 0 8px">Buat akun karyawan</h4>
+      <div class="row">
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">mail</span><input id="newEmail" placeholder="Email karyawan" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">lock</span><input id="newPass" placeholder="Kata sandi sementara" /></div>
+        <button id="createUserBtn" class="btn"><span class="material-symbols-rounded">person_add</span> Buat</button>
+      </div>
+      <div class="hint" style="opacity:.8;margin-top:6px">Akun dibuat tanpa keluar dari sesi admin.</div>
+    </div>
+  </dialog>
+
+  <!-- Dialog notifikasi (permintaan cuti) -->
+  <dialog id="notifDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">approval</span><b>Permintaan cuti</b></div>
+      <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body" id="cutiList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
+      Memuat permintaan cuti...
+    </div>
+  </dialog>
+
+  <!-- Dialog aturan waktu -->
+  <dialog id="timeRulesDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">schedule</span><b>Aturan Waktu Kustom</b></div>
+      <button class="icon-btn" onclick="document.getElementById('timeRulesDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body">
+      <div class="row">
+        <div class="input">
+          <span class="material-symbols-rounded">person</span>
+          <select id="rulesTarget">
+            <option value="all">Semua Karyawan</option>
+            <option value="specific">Karyawan Tertentu</option>
+          </select>
+        </div>
+      </div>
+      
+      <div id="rulesUserSelection" style="display:none; margin-top:10px">
+        <div class="user-list" id="rulesUserList">
+          <!-- Daftar user akan dimuat di sini -->
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top:16px">
+        <div class="input">
+          <span class="material-symbols-rounded">login</span>
+          <input id="rulesBerangkat" type="time" value="05:30" />
+        </div>
+        <div class="input">
+          <span class="material-symbols-rounded">logout</span>
+          <input id="rulesPulang" type="time" value="10:00" />
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top:10px">
+        <div class="input">
+          <span class="material-symbols-rounded">event_available</span>
+          <select id="rulesLibur" multiple style="height:100px">
+            <option value="0">Minggu</option>
+            <option value="1">Senin</option>
+            <option value="2">Selasa</option>
+            <option value="3">Rabu</option>
+            <option value="4">Kamis</option>
+            <option value="5">Jumat</option>
+            <option value="6">Sabtu</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="row" style="justify-content:flex-end; margin-top:16px">
+        <button id="saveRulesBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan Aturan</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Variabel global
+    let currentUser = null;
+    let userData = null;
+    let allUsers = [];
+    let selectedUsers = [];
+    let selectedRulesUsers = [];
+
+    // Inisialisasi
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Cek status auth
+      firebaseApp.auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          const role = firebaseApp.checkUserRole(user.uid);
+          if (role !== 'admin') {
+            firebaseApp.showToast('Akses ditolak. Hanya untuk admin.', 'error');
+            await firebaseApp.auth.signOut();
+            window.location.href = 'index.html';
+            return;
+          }
+          
+          // Load user data
+          await loadUserData();
+          
+          // Setup UI
+          setupUI();
+          
+          // Load data
+          await loadPresensiData();
+          await loadCutiRequests();
+          await loadAllUsers();
+          
+          // Update waktu terus menerus
+          setInterval(updateServerTime, 1000);
+        } else {
+          window.location.href = 'index.html';
+        }
+      });
+    });
+
+    // Setup UI
+    function setupUI() {
+      // Update waktu server
+      updateServerTime();
+      
+      // Set default dates for filters
+      const today = new Date();
+      document.getElementById('fDari').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      document.getElementById('fSampai').valueAsDate = today;
+      
+      // Setup event listeners
+      document.getElementById('profileBtn').addEventListener('click', showProfileDialog);
+      document.getElementById('notifBtn').addEventListener('click', showNotificationsDialog);
+      document.getElementById('timeRulesFab').addEventListener('click', showTimeRulesDialog);
+      document.getElementById('saveProfileBtn').addEventListener('click', saveProfile);
+      document.getElementById('logoutBtn').addEventListener('click', logout);
+      document.getElementById('createUserBtn').addEventListener('click', createUser);
+      document.getElementById('applyFilter').addEventListener('click', loadPresensiData);
+      document.getElementById('exportCsv').addEventListener('click', exportToCSV);
+      document.getElementById('saveSchedule').addEventListener('click', saveOVD);
+      document.getElementById('sendAnnounce').addEventListener('click', sendAnnouncement);
+      document.getElementById('saveRulesBtn').addEventListener('click', saveTimeRules);
+      document.getElementById('announceTarget').addEventListener('change', toggleUserSelection);
+      document.getElementById('rulesTarget').addEventListener('change', toggleRulesUserSelection);
+      document.getElementById('fPeriode').addEventListener('change', toggleCustomDateRange);
+      document.getElementById('pfpFile').addEventListener('change', handleProfilePictureUpload);
+      
+      // Load OVD status for today
+      loadOVDStatus();
+    }
+
+    // Load user data
+    async function loadUserData() {
+      try {
+        const doc = await firebaseApp.db.collection('users').doc(currentUser.uid).get();
+        if (doc.exists) {
+          userData = doc.data();
+          document.getElementById('nama').value = userData.nama || '';
+          document.getElementById('alamat').value = userData.alamat || '';
+          if (userData.foto) {
+            document.getElementById('pfp').src = userData.foto;
+          }
+        } else {
+          // Buat data user baru jika belum ada
+          userData = {
+            nama: currentUser.email.split('@')[0],
+            alamat: '',
+            foto: `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.email}&backgroundColor=ffb300,ffd54f&radius=20`,
+            role: 'admin',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          await firebaseApp.db.collection('users').doc(currentUser.uid).set(userData);
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        firebaseApp.showToast('Gagal memuat data pengguna', 'error');
+      }
+    }
+
+    // Update waktu server
+    function updateServerTime() {
+      const now = firebaseApp.getWIBDate();
+      document.getElementById('serverTime').textContent = firebaseApp.formatDate(now);
+    }
+
+    // Load semua user
+    async function loadAllUsers() {
+      try {
+        const snapshot = await firebaseApp.db.collection('users')
+          .where('role', '==', 'karyawan')
+          .get();
+        
+        allUsers = [];
+        snapshot.forEach(doc => {
+          allUsers.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        
+        // Update user lists
+        updateUserLists();
+      } catch (error) {
+        console.error('Error loading users:', error);
+        firebaseApp.showToast('Gagal memuat daftar pengguna', 'error');
+      }
+    }
+
+    // Update user lists in UI
+    function updateUserLists() {
+      const userList = document.getElementById('userList');
+      const rulesUserList = document.getElementById('rulesUserList');
+      
+      userList.innerHTML = '';
+      rulesUserList.innerHTML = '';
+      
+      allUsers.forEach(user => {
+        const userItem = document.createElement('div');
+        userItem.className = 'user-item';
+        userItem.dataset.id = user.id;
+        userItem.textContent = user.nama || user.id;
+        userItem.addEventListener('click', () => toggleUserSelection(user.id, 'announce'));
+        
+        const rulesUserItem = document.createElement('div');
+        rulesUserItem.className = 'user-item';
+        rulesUserItem.dataset.id = user.id;
+        rulesUserItem.textContent = user.nama || user.id;
+        rulesUserItem.addEventListener('click', () => toggleUserSelection(user.id, 'rules'));
+        
+        userList.appendChild(userItem);
+        rulesUserList.appendChild(rulesUserItem);
+      });
+    }
+
+    // Toggle user selection
+    function toggleUserSelection(userId, type) {
+      if (type === 'announce') {
+        const index = selectedUsers.indexOf(userId);
+        if (index === -1) {
+          selectedUsers.push(userId);
+        } else {
+          selectedUsers.splice(index, 1);
+        }
+        
+        // Update UI
+        document.querySelectorAll('#userList .user-item').forEach(item => {
+          if (selectedUsers.includes(item.dataset.id)) {
+            item.classList.add('selected');
+          } else {
+            item.classList.remove('selected');
+          }
+        });
+      } else if (type === 'rules') {
+        const index = selectedRulesUsers.indexOf(userId);
+        if (index === -1) {
+          selectedRulesUsers.push(userId);
+        } else {
+          selectedRulesUsers.splice(index, 1);
+        }
+        
+        // Update UI
+        document.querySelectorAll('#rulesUserList .user-item').forEach(item => {
+          if (selectedRulesUsers.includes(item.dataset.id)) {
+            item.classList.add('selected');
+          } else {
+            item.classList.remove('selected');
+          }
+        });
+      }
+    }
+
+    // Toggle user selection visibility
+    function toggleUserSelection() {
+      const target = document.getElementById('announceTarget').value;
+      document.getElementById('userSelection').style.display = target === 'specific' ? 'block' : 'none';
+    }
+
+    function toggleRulesUserSelection() {
+      const target = document.getElementById('rulesTarget').value;
+      document.getElementById('rulesUserSelection').style.display = target === 'specific' ? 'block' : 'none';
+    }
+
+    function toggleCustomDateRange() {
+      const period = document.getElementById('fPeriode').value;
+      document.getElementById('customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+    }
+
+    // Load presensi data
+    async function loadPresensiData() {
+      try {
+        const namaFilter = document.getElementById('fNama').value.toLowerCase();
+        const period = document.getElementById('fPeriode').value;
+        const showCount = document.getElementById('fShow').value;
+        
+        let query = firebaseApp.db.collection('presensi').orderBy('waktu', 'desc');
+        
+        // Apply filters
+        if (period !== 'all') {
+          let startDate, endDate;
+          const now = new Date();
+          
+          switch (period) {
+            case 'harian':
+              startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+              break;
+            case 'mingguan':
+              startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+              endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()) + 1);
+              break;
+            case 'bulanan':
+              startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+              endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+              break;
+            case 'tahunan':
+              startDate = new Date(now.getFullYear(), 0, 1);
+              endDate = new Date(now.getFullYear() + 1, 0, 1);
+              break;
+            case 'custom':
+              startDate = new Date(document.getElementById('fDari').value);
+              endDate = new Date(document.getElementById('fSampai').value);
+              endDate.setDate(endDate.getDate() + 1); // Include end date
+              break;
+          }
+          
+          query = query.where('waktu', '>=', startDate).where('waktu', '<=', endDate);
+        }
+        
+        if (showCount !== 'all') {
+          query = query.limit(parseInt(showCount));
+        }
+        
+        const snapshot = await query.get();
+        const tableBody = document.getElementById('tableBody');
+        tableBody.innerHTML = '';
+        
+        if (snapshot.empty) {
+          tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
+          return;
+        }
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const waktu = data.waktu.toDate();
+          
+          // Apply nama filter
+          if (namaFilter && !data.nama.toLowerCase().includes(namaFilter)) {
+            return;
+          }
+          
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${firebaseApp.formatDate(waktu)}</td>
+            <td>${data.nama}</td>
+            <td>${data.jenis}</td>
+            <td><span class="status ${data.status === 'tepat waktu' ? 's-good' : data.status === 'terlambat' ? 's-warn' : 's-bad'}">${data.status}</span></td>
+            <td>${data.lokao ? `${data.lokasi.latitude.toFixed(4)}, ${data.lokasi.longitude.toFixed(4)}` : 'Tidak ada'}</td>
+            <td><a href="${data.foto}" target="_blank">Lihat Foto</a></td>
+          `;
+          
+          tableBody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Error loading presensi data:', error);
+        firebaseApp.showToast('Gagal memuat data presensi', 'error');
+      }
+    }
+
+    // Load cuti requests
+    async function loadCutiRequests() {
+      try {
+        const snapshot = await firebaseApp.db.collection('cuti')
+          .where('status', '==', 'pending')
+          .orderBy('createdAt', 'desc')
+          .get();
+        
+        const cutiList = document.getElementById('cutiList');
+        const notifBadge = document.getElementById('notifBadge');
+        
+        if (snapshot.empty) {
+          cutiList.innerHTML = '<div class="cuti-item">Tidak ada permintaan cuti</div>';
+          notifBadge.style.display = 'none';
+          return;
+        }
+        
+        cutiList.innerHTML = '';
+        notifBadge.textContent = snapshot.size;
+        notifBadge.style.display = 'grid';
+        
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const tanggal = data.tanggal.toDate();
+          
+          const item = document.createElement('div');
+          item.className = 'cuti-item';
+          item.innerHTML = `
+            <div><strong>${data.nama}</strong> mengajukan cuti <strong>${data.jenis}</strong></div>
+            <div>Tanggal: ${tanggal.toLocaleDateString('id-ID')}</div>
+            <div>Keterangan: ${data.catatan || 'Tidak ada keterangan'}</div>
+            <div style="font-size:12px;opacity:0.7">Diajukan pada: ${firebaseApp.formatDate(data.createdAt.toDate())}</div>
+            <div class="cuti-actions">
+              <button class="btn approve-btn" data-id="${doc.id}" style="background:var(--good)">
+                <span class="material-symbols-rounded">check</span> Setujui
+              </button>
+              <button class="btn reject-btn" data-id="${doc.id}" style="background:var(--bad)">
+                <span class="material-symbols-rounded">close</span> Tolak
+              </button>
+            </div>
+          `;
+          
+          cutiList.appendChild(item);
+        });
+        
+        // Add event listeners for approve/reject buttons
+        document.querySelectorAll('.approve-btn').forEach(btn => {
+          btn.addEventListener('click', function() {
+            const cutiId = this.getAttribute('data-id');
+            processCutiRequest(cutiId, 'approved');
+          });
+        });
+        
+        document.querySelectorAll('.reject-btn').forEach(btn => {
+          btn.addEventListener('click', function() {
+            const cutiId = this.getAttribute('data-id');
+            processCutiRequest(cutiId, 'rejected');
+          });
+        });
+      } catch (error) {
+        console.error('Error loading cuti requests:', error);
+        firebaseApp.showToast('Gagal memuat permintaan cuti', 'error');
+      }
+    }
+
+    // Process cuti request
+    async function processCutiRequest(cutiId, status) {
+      try {
+        const cutiDoc = await firebaseApp.db.collection('cuti').doc(cutiId).get();
+        const cutiData = cutiDoc.data();
+        
+        // Update cuti status
+        await firebaseApp.db.collection('cuti').doc(cutiId).update({
+          status: status,
+          processedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          processedBy: currentUser.uid
+        });
+        
+        // Create cuti record if approved
+        if (status === 'approved') {
+          const cutiRecord = {
+            uid: cutiData.uid,
+            nama: cutiData.nama,
+            jenis: cutiData.jenis,
+            tanggal: cutiData.tanggal,
+            catatan: cutiData.catatan || '',
+            status: 'cuti',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          
+          await firebaseApp.db.collection('presensi').add(cutiRecord);
+        }
+        
+        // Send notification to user
+        const notifData = {
+          uid: cutiData.uid,
+          title: 'Status Cuti',
+          message: `Cuti Anda telah ${status === 'approved' ? 'disetujui' : 'ditolak'}`,
+          type: 'cuti',
+          read: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        await firebaseApp.db.collection('notifications').add(notifData);
+        
+        firebaseApp.showToast(`Cuti telah ${status === 'approved' ? 'disetujui' : 'ditolak'}`, 'success');
+        
+        // Reload cuti requests
+        loadCutiRequests();
+      } catch (error) {
+        console.error('Error processing cuti request:', error);
+        firebaseApp.showToast('Gagal memproses permintaan cuti', 'error');
+      }
+    }
+
+    // Load OVD status
+    async function loadOVDStatus() {
+      try {
+        const today = new Date().toDateString();
+        const doc = await firebaseApp.db.collection('ovd').doc(today).get();
+        
+        if (doc.exists) {
+          const ovd = doc.data();
+          document.getElementById('wajibHari').value = ovd.status;
+        } else {
+          document.getElementById('wajibHari').value = 'default';
+        }
+      } catch (error) {
+        console.error('Error loading OVD status:', error);
+        firebaseApp.showToast('Gagal memuat status OVD', 'error');
+      }
+    }
+
+    // Save OVD
+    async function saveOVD() {
+      try {
+        const status = document.getElementById('wajibHari').value;
+        const today = new Date().toDateString();
+        
+        await firebaseApp.db.collection('ovd').doc(today).set({
+          status: status,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser.uid
+        });
+        
+        firebaseApp.showToast('Pengaturan OVD berhasil disimpan', 'success');
+      } catch (error) {
+        console.error('Error saving OVD:', error);
+        firebaseApp.showToast('Gagal menyimpan pengaturan OVD', 'error');
+      }
+    }
+
+    // Send announcement
+    async function sendAnnouncement() {
+      try {
+        const message = document.getElementById('announceText').value;
+        const target = document.getElementById('announceTarget').value;
+        
+        if (!message) {
+          firebaseApp.showToast('Tulis pesan pengumuman', 'error');
+          return;
+        }
+        
+        let targetUsers = [];
+        if (target === 'all') {
+          targetUsers = allUsers.map(user => user.id);
+        } else {
+          targetUsers = selectedUsers;
+        }
+        
+        if (targetUsers.length === 0) {
+          firebaseApp.showToast('Pilih setidaknya satu karyawan', 'error');
+          return;
+        }
+        
+        // Send to each user
+        for (const userId of targetUsers) {
+          const notifData = {
+            uid: userId,
+            title: 'Pengumuman',
+            message: message,
+            type: 'pengumuman',
+            read: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          
+          await firebaseApp.db.collection('notifications').add(notifData);
+        }
+        
+        firebaseApp.showToast('Pengumuman berhasil dikirim', 'success');
+        document.getElementById('announceText').value = '';
+      } catch (error) {
+        console.error('Error sending announcement:', error);
+        firebaseApp.showToast('Gagal mengirim pengumuman', 'error');
+      }
+    }
+
+    // Save time rules
+    async function saveTimeRules() {
+      try {
+        const target = document.getElementById('rulesTarget').value;
+        const berangkat = document.getElementById('rulesBerangkat').value;
+        const pulang = document.getElementById('rulesPulang').value;
+        const liburOptions = document.getElementById('rulesLibur').selectedOptions;
+        const libur = Array.from(liburOptions).map(option => option.value);
+        
+        let targetUsers = [];
+        if (target === 'all') {
+          targetUsers = allUsers.map(user => user.id);
+        } else {
+          targetUsers = selectedRulesUsers;
+        }
+        
+        if (targetUsers.length === 0) {
+          firebaseApp.showToast('Pilih setidaknya satu karyawan', 'error');
+          return;
+        }
+        
+        // Save for each user
+        for (const userId of targetUsers) {
+          const rulesData = {
+            berangkat: berangkat,
+            pulang: pulang,
+            libur: libur,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser.uid
+          };
+          
+          await firebaseApp.db.collection('time_rules').doc(userId).set(rulesData);
+        }
+        
+        firebaseApp.showToast('Aturan waktu berhasil disimpan', 'success');
+        document.getElementById('timeRulesDlg').close();
+      } catch (error) {
+        console.error('Error saving time rules:', error);
+        firebaseApp.showToast('Gagal menyimpan aturan waktu', 'error');
+      }
+    }
+
+    // Export to CSV
+    async function exportToCSV() {
+      try {
+        document.getElementById('exportCsv').disabled = true;
+        document.getElementById('exportCsv').innerHTML = '<span class="spinner"></span> Mengekspor...';
+        
+        // Get all presensi data
+        const snapshot = await firebaseApp.db.collection('presensi')
+          .orderBy('nama')
+          .orderBy('waktu')
+          .get();
+        
+        if (snapshot.empty) {
+          firebaseApp.showToast('Tidak ada data untuk diekspor', 'warning');
+          document.getElementById('exportCsv').disabled = false;
+          document.getElementById('exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
+          return;
+        }
+        
+        // Group by user
+        const dataByUser = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const user = data.nama;
+          
+          if (!dataByUser[user]) {
+            dataByUser[user] = [];
+          }
+          
+          dataByUser[user].push({
+            waktu: data.waktu.toDate(),
+            jenis: data.jenis,
+            status: data.status,
+            lokasi: data.lokasi ? `${data.lokasi.latitude}, ${data.lokasi.longitude}` : '',
+            foto: data.foto
+          });
+        });
+        
+        // Create CSV content
+        let csvContent = 'Nama,Waktu,Jenis,Status,Lokasi,Foto\n';
+        
+        // Sort users alphabetically
+        const sortedUsers = Object.keys(dataByUser).sort();
+        
+        for (const user of sortedUsers) {
+          // Sort entries by date
+          dataByUser[user].sort((a, b) => a.waktu - b.waktu);
+          
+          for (const entry of dataByUser[user]) {
+            csvContent += `"${user}",${entry.waktu.toLocaleString('id-ID')},${entry.jenis},${entry.status},"${entry.lokao}",${entry.foto}\n`;
+          }
+          
+          // Add empty line between users
+          csvContent += '\n';
+        }
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `presensi-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        firebaseApp.showToast('CSV berhasil diekspor', 'success');
+        document.getElementById('exportCsv').disabled = false;
+        document.getElementById('exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
+      } catch (error) {
+        console.error('Error exporting CSV:', error);
+        firebaseApp.showToast('Gagal mengekspor CSV', 'error');
+        document.getElementById('exportCsv').disabled = false;
+        document.getElementById('exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
+      }
+    }
+
+    // Create user
+    async function createUser() {
+      try {
+        const email = document.getElementById('newEmail').value;
+        const password = document.getElementById('newPass').value;
+        
+        if (!email || !password) {
+          firebaseApp.showToast('Isi email dan password', 'error');
+          return;
+        }
+        
+        document.getElementById('createUserBtn').disabled = true;
+        document.getElementById('createUserBtn').innerHTML = '<span class="spinner"></span> Membuat...';
+        
+        // Create user in Firebase Auth
+        const userCredential = await firebaseApp.auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+        
+        // Create user data in Firestore
+        await firebaseApp.db.collection('users').doc(user.uid).set({
+          nama: email.split('@')[0],
+          email: email,
+          role: 'karyawan',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        firebaseApp.showToast('Akun berhasil dibuat', 'success');
+        document.getElementById('newEmail').value = '';
+        document.getElementById('newPass').value = '';
+        
+        // Reload users list
+        await loadAllUsers();
+        
+        document.getElementById('createUserBtn').disabled = false;
+        document.getElementById('createUserBtn').innerHTML = '<span class="material-symbols-rounded">person_add</span> Buat';
+      } catch (error) {
+        console.error('Error creating user:', error);
+        firebaseApp.showToast('Gagal membuat akun', 'error');
+        document.getElementById('createUserBtn').disabled = false;
+        document.getElementById('createUserBtn').innerHTML = '<span class="material-symbols-rounded">person_add</span> Buat';
+      }
+    }
+
+    // Handle profile picture upload
+    async function handleProfilePictureUpload(event) {
+      try {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const fotoUrl = await firebaseApp.compressImage(file);
+        
+        await firebaseApp.db.collection('users').doc(currentUser.uid).update({
+          foto: fotoUrl
+        });
+        
+        userData.foto = fotoUrl;
+        document.getElementById('pfp').src = fotoUrl;
+        
+        firebaseApp.showToast('Foto profil berhasil diubah', 'success');
+      } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        firebaseApp.showToast('Gagal mengubah foto profil', 'error');
+      }
+    }
+
+    // Show profile dialog
+    function showProfileDialog() {
+      document.getElementById('profileDlg').showModal();
+    }
+
+    // Show notifications dialog
+    function showNotificationsDialog() {
+      document.getElementById('notifDlg').showModal();
+    }
+
+    // Show time rules dialog
+    function showTimeRulesDialog() {
+      document.getElementById('timeRulesDlg').showModal();
+    }
+
+    // Save profile
+    async function saveProfile() {
+      try {
+        const nama = document.getElementById('nama').value;
+        const alamat = document.getElementById('alamat').value;
+        
+        await firebaseApp.db.collection('users').doc(currentUser.uid).update({
+          nama: nama,
+          alamat: alamat
+        });
+        
+        userData.nama = nama;
+        userData.alamat = alamat;
+        
+        firebaseApp.showToast('Profil berhasil disimpan', 'success');
+        document.getElementById('profileDlg').close();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        firebaseApp.showToast('Gagal menyimpan profil', 'error');
+      }
+    }
+
+    // Logout
+    async function logout() {
+      try {
+        await firebaseApp.auth.signOut();
+        firebaseApp.showToast('Berhasil keluar', 'success');
+        window.location.href = 'index.html';
+      } catch (error) {
+        console.error('Error logging out:', error);
+        firebaseApp.showToast('Gagal keluar', 'error');
+      }
+    }
+  </script>
+</body>
+</html>
