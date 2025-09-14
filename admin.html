@@ -1,172 +1,85 @@
+<!-- balasan 6 part 1: admin.html -->
+<!-- Cara setup:
+1. Simpan file ini di root folder proyek (sejajar index.html).
+2. Tambahkan di <head>:
+   <link rel="manifest" href="manifest.webmanifest" />
+3. Sertakan Firebase SDK & app.js tepat sebelum </body>:
+   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+   <script src="app.js" defer></script>
+4. Daftarkan service worker tepat sebelum </body>:
+   <script>
+     if ('serviceWorker' in navigator) {
+       navigator.serviceWorker.register('service-worker.js');
+     }
+   </script>
+-->
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Presensi FUPA — Admin</title>
+  <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#FFB300" />
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="FUPA Presensi" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
     :root{
-      --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300; --card:#ffffffcc; --txt:#222; --accent:#673AB7;
-      --soft-shadow: 0 10px 30px rgba(0,0,0,.15); --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
+      --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300;
+      --card:#ffffffcc; --txt:#222; --accent:#673AB7;
+      --soft-shadow:0 10px 30px rgba(0,0,0,.15);
+      --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
     }
     *{box-sizing:border-box}
     body{
       margin:0; font-family:Inter,system-ui; color:var(--txt);
-      background: radial-gradient(1200px 800px at 80% -10%, var(--bg3), transparent),
-                  radial-gradient(1000px 600px at 0% 0%, var(--bg2), transparent),
-                  linear-gradient(180deg, var(--bg1), var(--bg2) 60%, var(--bg3));
-      min-height:100svh; overflow-x:hidden; position:relative;
+      background:
+        radial-gradient(1200px 800px at 80% -10%,var(--bg3),transparent),
+        radial-gradient(1000px 600px at 0 0,var(--bg2),transparent),
+        linear-gradient(180deg,var(--bg1),var(--bg2)60%,var(--bg3));
     }
-    header{ position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:12px;
-      padding:14px 16px; backdrop-filter: blur(8px); }
-    .brand{display:flex; align-items:center; gap:10px}
-    .icons{display:flex; align-items:center; gap:10px}
-    .icon-btn{ background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:14px; padding:8px; display:inline-flex; cursor:pointer;
-      box-shadow:var(--soft-shadow); }
-    .container{ padding:16px }
-    .card{ background:var(--card); border-radius:16px; padding:16px; box-shadow:var(--soft-shadow); }
-    .grid{ display:grid; grid-template-columns:1fr; gap:16px }
-    @media(min-width:1024px){ .grid{ grid-template-columns:1fr .7fr } }
-    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
-    .input{ display:flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px; padding:8px 10px }
-    .input input, .input select, .input textarea{ border:none; outline:none; background:transparent; font-size:14px; width:100% }
+    header{
+      position:sticky; top:0; z-index:5;
+      display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+      backdrop-filter:blur(8px);
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .icons{display:flex;align-items:center;gap:10px}
+    .icon-btn{
+      background:#fff;border:1px solid rgba(0,0,0,.06);
+      border-radius:14px;padding:8px;cursor:pointer;
+      box-shadow:var(--soft-shadow);
+    }
+    .container{padding:16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:1024px){ .grid{grid-template-columns:1fr .7fr} }
+    .card{
+      background:var(--card);border-radius:16px;padding:16px;
+      box-shadow:var(--soft-shadow);
+    }
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .btn{
-      display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, #FFB300, #FF8F00);
-      color:#fff; border:none; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
+      display:inline-flex;align-items:center;gap:8px;
+      background:linear-gradient(135deg,#FFB300,#FF8F00);
+      color:#fff;border:none;border-radius:12px;
+      padding:10px 14px;font-weight:700;cursor:pointer;
       box-shadow:0 10px 20px rgba(255,143,0,.25);
     }
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    table{ width:100%; border-collapse:separate; border-spacing:0 8px }
-    th, td{ text-align:left; padding:10px 12px; background:#fff }
-    th{ position:sticky; top:0; z-index:1; background: #FFD54F; }
-    tr{ box-shadow:0 1px 0 rgba(0,0,0,.06) }
+    .btn:disabled{opacity:0.6;cursor:not-allowed}
+    table{width:100%;border-collapse:separate;border-spacing:0 8px}
+    th, td{background:#fff;padding:10px 12px;text-align:left}
+    th{position:sticky;top:0; background:#FFD54F; z-index:1}
+    tr{box-shadow:0 1px 0 rgba(0,0,0,.06)}
     .fab{
-      position:fixed; right:16px; bottom:16px; z-index:6; width:56px; height:56px; border-radius:50%;
-      display:grid; place-items:center; background:linear-gradient(135deg,#FF8F00,#FF6F00); color:#fff; box-shadow:var(--soft-shadow);
-      cursor:pointer;
-    }
-    dialog{ border:none; border-radius:16px; width:min(720px,92vw); padding:0; box-shadow:var(--soft-shadow); overflow:hidden; }
-    .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff}
-    .dlg-body{padding:14px; background:#fff}
-    .status{font-weight:800; padding:6px 10px; border-radius:12px; color:#fff; display:inline-flex; align-items:center; gap:6px}
-    .s-good{background:var(--good)} .s-warn{background:var(--warn)} .s-bad{background:var(--bad)}
-    .toast{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#111; color:#fff; padding:10px 14px;
-      border-radius:12px; box-shadow:var(--soft-shadow); z-index:10; display:none; }
-    .filter-section {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 16px;
-      align-items: center;
-    }
-    .filter-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .filter-select, .filter-input {
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(0,0,0,0.1);
-      background: white;
-    }
-    .badge {
-      position: absolute;
-      top: -5px;
-      right: -5px;
-      background: red;
-      color: white;
-      border-radius: 50%;
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-      display: grid;
-      place-items: center;
-    }
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .cuti-item {
-      padding: 12px;
-      border-bottom: 1px solid #eee;
-    }
-    .cuti-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .user-list {
-      max-height: 200px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 8px;
-      padding: 8px;
-      margin-top: 8px;
-    }
-    .user-item {
-      padding: 6px 8px;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .user-item:hover {
-      background-color: #f5f5f5;
-    }
-    .user-item.selected {
-      background-color: #FFD54F;
-      color: #222;
-    }
-    .install-btn {
-      position: fixed;
-      left: 16px;
-      bottom: 16px;
-      z-index: 6;
-      background: linear-gradient(135deg, #673AB7, #4527A0);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: var(--soft-shadow);
-      display: none;
-    }
-    .selectable-list {
-      max-height: 200px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 8px;
-      padding: 8px;
-    }
-    .selectable-item {
-      padding: 8px;
-      cursor: pointer;
-      border-radius: 4px;
-      margin-bottom: 4px;
-    }
-    .selectable-item:hover {
-      background-color: #f5f5f5;
-    }
-    .selectable-item.selected {
-      background-color: #FFD54F;
-      color: #222;
+      position:fixed;right:16px;bottom:16px;width:56px;height:56px;
+      border-radius:50%;display:grid;place-items:center;
+      background:linear-gradient(135deg,#FF8F00,#FF6F00);color:#fff;
+      box-shadow:var(--soft-shadow);cursor:pointer;
     }
   </style>
 </head>
@@ -176,16 +89,14 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Panel Admin</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
+        <div id="serverTime" style="font-size:12px;opacity:.8"></div>
       </div>
     </div>
     <div class="icons">
-      <div style="position:relative">
-        <button id="notifBtn" class="icon-btn" title="Permintaan cuti">
-          <span class="material-symbols-rounded">notifications_active</span>
-          <span id="notifBadge" class="badge" style="display:none">0</span>
-        </button>
-      </div>
+      <button id="notifBtn" class="icon-btn" title="Permintaan cuti">
+        <span class="material-symbols-rounded">notifications_active</span>
+        <span id="notifBadge" class="badge">0</span>
+      </button>
       <button id="profileBtn" class="icon-btn" title="Profil & akun">
         <span class="material-symbols-rounded">admin_panel_settings</span>
       </button>
@@ -194,73 +105,36 @@
 
   <div class="container">
     <div class="grid">
+      <!-- Riwayat presensi & export CSV -->
       <section class="card">
         <div class="row" style="justify-content:space-between">
           <h3 style="margin:0">Riwayat presensi</h3>
-          <div class="row">
-            <button id="exportCsv" class="btn"><span class="material-symbols-rounded">download</span> Ekspor CSV</button>
-          </div>
+          <button id="exportCsv" class="btn">
+            <span class="material-symbols-rounded">download</span>Ekspor CSV
+          </button>
         </div>
-        
-        <div class="filter-section">
-          <div class="filter-item">
-            <span class="material-symbols-rounded">person_search</span>
-            <input id="fNama" class="filter-input" placeholder="Filter nama" />
-          </div>
-          <div class="filter-item">
-            <span class="material-symbols-rounded">today</span>
-            <select id="fPeriode" class="filter-select">
-              <option value="harian">Harian</option>
-              <option value="mingguan">Mingguan</option>
-              <option value="bulanan">Bulanan</option>
-              <option value="tahunan">Tahunan</option>
-              <option value="custom">Periode Kustom</option>
-            </select>
-          </div>
-          <div class="filter-item" id="customDateRange" style="display:none">
-            <input id="fDari" type="date" class="filter-input" />
-            <span>s/d</span>
-            <input id="fSampai" type="date" class="filter-input" />
-          </div>
-          <div class="filter-item">
-            <select id="fShow" class="filter-select">
-              <option value="20">Tampilkan 20</option>
-              <option value="50">Tampilkan 50</option>
-              <option value="100">Tampilkan 100</option>
-              <option value="all">Tampilkan Semua</option>
-            </select>
-            <button id="applyFilter" class="btn"><span class="material-symbols-rounded">filter_alt</span> Terapkan</button>
-          </div>
-        </div>
-        
-        <div style="max-height:60vh; overflow:auto; margin-top:10px">
-          <table>
-            <thead>
-              <tr>
-                <th>Waktu</th>
-                <th>Nama</th>
-                <th>Jenis</th>
-                <th>Status</th>
-                <th>Koordinat</th>
-                <th>Selfie</th>
-              </tr>
-            </thead>
-            <tbody id="tableBody">
-              <tr>
-                <td colspan="6" style="text-align:center;padding:20px">
-                  <span class="material-symbols-rounded">history</span>
-                  Memuat riwayat presensi...
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Nama</th>
+              <th>Jenis</th>
+              <th>Status</th>
+              <th>Koordinat</th>
+              <th>Selfie</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <!-- Data terisi oleh app.js -->
+          </tbody>
+        </table>
       </section>
-
+      <!-- lanjut ke pengaturan & pengumuman… -->
+<!-- pengaturan & pengumuman -->
       <section class="card">
         <h3 style="margin:0 0 8px">Pengaturan & pengumuman</h3>
         <div class="row">
-          <div class="input">
+          <div class="input" style="flex:1">
             <span class="material-symbols-rounded">event_busy</span>
             <select id="wajibHari">
               <option value="auto">Sesuai aturan: Minggu non-presensi</option>
@@ -268,11 +142,16 @@
               <option value="forceOff">Paksa tidak wajib presensi hari ini</option>
             </select>
           </div>
-          <button id="saveSchedule" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+          <button id="saveSchedule" class="btn">
+            <span class="material-symbols-rounded">save</span> Simpan
+          </button>
         </div>
         <div class="row" style="margin-top:10px">
-          <div class="input" style="flex:1"><span class="material-symbols-rounded">campaign</span>
-            <textarea id="announceText" placeholder="Tulis pengumuman untuk karyawan" rows="3" style="width:100%"></textarea>
+          <div class="input" style="flex:1">
+            <span class="material-symbols-rounded">campaign</span>
+            <textarea id="announceText" rows="3" style="width:100%">
+Pengumuman: Hari ini akan ada rapat pukul 14:00 di ruang meeting.
+            </textarea>
           </div>
           <div class="input">
             <span class="material-symbols-rounded">person</span>
@@ -281,1043 +160,48 @@
               <option value="specific">Karyawan Tertentu</option>
             </select>
           </div>
-          <button id="sendAnnounce" class="btn"><span class="material-symbols-rounded">send</span> Kirim</button>
+          <button id="sendAnnounce" class="btn">
+            <span class="material-symbols-rounded">send</span> Kirim
+          </button>
         </div>
         <div id="userSelection" style="display:none; margin-top:10px">
-          <div class="selectable-list" id="userList">
-            <!-- Daftar user akan dimuat di sini -->
+          <div class="user-list" id="userList">
+            <div class="user-item">Ahmad Kurniawan</div>
+            <div class="user-item">Siti Rahayu</div>
+            <div class="user-item">Budi Santoso</div>
+            <div class="user-item">Dewi Anggraini</div>
           </div>
         </div>
       </section>
-    </div>
-  </div>
+    </div> <!-- end .grid -->
+  </div> <!-- end .container -->
 
-  <!-- FAB pengumuman cepat -->
+  <!-- FAB aturan waktu -->
   <button class="fab" id="timeRulesFab" title="Aturan Waktu">
     <span class="material-symbols-rounded">schedule</span>
   </button>
 
-  <!-- Install button -->
-  <button class="install-btn" id="installBtn" style="display:none">
-    <span class="material-symbols-rounded">download</span> Install App
-  </button>
+  <!-- dialog Profil & Akun -->
+  <dialog id="profileDlg">…</dialog>
 
-  <!-- Dialog profil admin + create akun -->
-  <dialog id="profileDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">admin_panel_settings</span><b>Profil & Akun</b></div>
-      <button class="icon-btn" onclick="document.getElementById('profileDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body">
-      <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
-        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
-      </div>
-      <div class="row" style="justify-content:space-between; margin-top:12px">
-        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
-        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
-      </div>
+  <!-- dialog permintaan cuti -->
+  <dialog id="notifDlg">…</dialog>
 
-      <hr style="margin:16px 0; opacity:.3" />
+  <!-- dialog aturan waktu -->
+  <dialog id="timeRulesDlg">…</dialog>
 
-      <h4 style="margin:0 0 8px">Buat akun karyawan</h4>
-      <div class="row">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">mail</span><input id="newEmail" placeholder="Email karyawan" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">lock</span><input id="newPass" placeholder="Kata sandi sementara" /></div>
-        <button id="createUserBtn" class="btn"><span class="material-symbols-rounded">person_add</span> Buat</button>
-      </div>
-      <div class="hint" style="opacity:.8;margin-top:6px">Akun dibuat tanpa keluar dari sesi admin.</div>
-    </div>
-  </dialog>
+  <div id="toast" class="toast"></div>
 
-  <!-- Dialog notifikasi (permintaan cuti) -->
-  <dialog id="notifDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">approval</span><b>Permintaan cuti</b></div>
-      <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body" id="cutiList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div class="cuti-item">
-        <div style="text-align:center;padding:20px">
-          <span class="material-symbols-rounded">pending</span>
-          Memuat permintaan cuti...
-        </div>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Dialog aturan waktu -->
-  <dialog id="timeRulesDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">schedule</span><b>Aturan Waktu Kustom</b></div>
-      <button class="icon-btn" onclick="document.getElementById('timeRulesDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body">
-      <div class="row">
-        <div class="input">
-          <span class="material-symbols-rounded">person</span>
-          <select id="rulesTarget">
-            <option value="all">Semua Karyawan</option>
-            <option value="specific">Karyawan Tertentu</option>
-          </select>
-        </div>
-      </div>
-      
-      <div id="rulesUserSelection" style="display:none; margin-top:10px">
-        <div class="selectable-list" id="rulesUserList">
-          <!-- Daftar user untuk aturan khusus akan dimuat di sini -->
-        </div>
-      </div>
-      
-      <div class="row" style="margin-top:16px">
-        <div class="input">
-          <span class="material-symbols-rounded">login</span>
-          <input id="rulesBerangkat" type="time" value="05:30" />
-        </div>
-        <div class="input">
-          <span class="material-symbols-rounded">logout</span>
-          <input id="rulesPulang" type="time" value="10:00" />
-        </div>
-      </div>
-      
-      <div class="row" style="margin-top:10px">
-        <div class="input">
-          <span class="material-symbols-rounded">event_available</span>
-          <select id="rulesLibur" multiple style="height:100px">
-            <option value="0">Minggu</option>
-            <option value="1">Senin</option>
-            <option value="2">Selasa</option>
-            <option value="3">Rabu</option>
-            <option value="4">Kamis</option>
-            <option value="5">Jumat</option>
-            <option value="6">Sabtu</option>
-          </select>
-        </div>
-      </div>
-      
-      <div class="row" style="justify-content:flex-end; margin-top:16px">
-        <button id="saveRulesBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan Aturan</button>
-      </div>
-    </div>
-  </dialog>
-
-  <div class="toast" id="toast"></div>
-
+  <!-- Firebase SDKs & app logic -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js" defer></script>
+
+  <!-- register service worker -->
   <script>
-    // Variabel global
-    let currentUser = null;
-    let userData = null;
-    let allUsers = [];
-    let selectedUsers = [];
-    let selectedRulesUsers = [];
-    let cutiListener = null;
-    let presensiListener = null;
-
-    // Inisialisasi setelah DOM siap
-    document.addEventListener('DOMContentLoaded', async function() {
-      // Cek status autentikasi
-      auth.onAuthStateChanged(async (user) => {
-        if (user) {
-          currentUser = user;
-          await loadUserData();
-          initApp();
-        } else {
-          window.location.href = "index.html";
-        }
-      });
-
-      // Setup PWA
-      setupPWA();
-    });
-
-    // Setup PWA
-    function setupPWA() {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('service-worker.js')
-          .then(() => console.log('Service Worker terdaftar'))
-          .catch(err => console.error('Service Worker gagal:', err));
-      }
-
-      let deferredPrompt;
-      const installBtn = $("#installBtn");
-      
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'block';
-      });
-
-      installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          if (outcome === 'accepted') {
-            installBtn.style.display = 'none';
-          }
-          deferredPrompt = null;
-        }
-      });
-    }
-
-    // Muat data pengguna
-    async function loadUserData() {
-      try {
-        const doc = await db.collection('users').doc(currentUser.uid).get();
-        if (doc.exists) {
-          userData = doc.data();
-          $("#nama").value = userData.nama || "";
-          $("#alamat").value = userData.alamat || "";
-          if (userData.fotoProfil) {
-            $("#pfp").src = userData.fotoProfil;
-          }
-        } else {
-          // Buat data pengguna baru jika belum ada
-          userData = {
-            nama: currentUser.email.split('@')[0],
-            alamat: "",
-            role: "admin",
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          };
-          await db.collection('users').doc(currentUser.uid).set(userData);
-        }
-      } catch (error) {
-        console.error("Error loading user data:", error);
-        toast("Gagal memuat data pengguna", "error");
-      }
-    }
-
-    // Inisialisasi aplikasi
-    async function initApp() {
-      // Setup waktu server
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-      
-      // Muat semua data pengguna
-      await loadAllUsers();
-      
-      // Muat riwayat presensi
-      loadRiwayatPresensi();
-      
-      // Muat permintaan cuti
-      loadPermintaanCuti();
-      
-      // Setup event listeners
-      setupEventListeners();
-    }
-
-    // Update waktu server
-    function updateServerTime() {
-      const now = getWIBDate();
-      const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      };
-      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
-    }
-
-    // Muat semua data pengguna
-    async function loadAllUsers() {
-      try {
-        const snapshot = await db.collection('users')
-          .where('role', '==', 'karyawan')
-          .get();
-        
-        allUsers = [];
-        snapshot.forEach(doc => {
-          allUsers.push({
-            id: doc.id,
-            ...doc.data()
-          });
-        });
-        
-        // Isi daftar user untuk pengumuman
-        populateUserList();
-        
-        // Isi daftar user untuk aturan waktu
-        populateRulesUserList();
-      } catch (error) {
-        console.error("Error loading users:", error);
-        toast("Gagal memuat daftar pengguna", "error");
-      }
-    }
-
-    // Isi daftar user untuk pengumuman
-    function populateUserList() {
-      const userList = $("#userList");
-      userList.innerHTML = "";
-      
-      allUsers.forEach(user => {
-        const div = document.createElement('div');
-        div.className = 'selectable-item';
-        div.textContent = user.nama || user.email;
-        div.setAttribute('data-id', user.id);
-        
-        div.addEventListener('click', () => {
-          div.classList.toggle('selected');
-          const userId = div.getAttribute('data-id');
-          
-          if (div.classList.contains('selected')) {
-            selectedUsers.push(userId);
-          } else {
-            selectedUsers = selectedUsers.filter(id => id !== userId);
-          }
-        });
-        
-        userList.appendChild(div);
-      });
-    }
-
-    // Isi daftar user untuk aturan waktu
-    function populateRulesUserList() {
-      const rulesUserList = $("#rulesUserList");
-      rulesUserList.innerHTML = "";
-      
-      allUsers.forEach(user => {
-        const div = document.createElement('div');
-        div.className = 'selectable-item';
-        div.textContent = user.nama || user.email;
-        div.setAttribute('data-id', user.id);
-        
-        div.addEventListener('click', () => {
-          div.classList.toggle('selected');
-          const userId = div.getAttribute('data-id');
-          
-          if (div.classList.contains('selected')) {
-            selectedRulesUsers.push(userId);
-          } else {
-            selectedRulesUsers = selectedRulesUsers.filter(id => id !== userId);
-          }
-        });
-        
-        rulesUserList.appendChild(div);
-      });
-    }
-
-    // Muat riwayat presensi
-    async function loadRiwayatPresensi() {
-      try {
-        let query = db.collection('presensi')
-          .orderBy('waktu', 'desc');
-        
-        // Terapkan filter nama
-        const namaFilter = $("#fNama").value.trim();
-        if (namaFilter) {
-          // Untuk filter nama, kita perlu mendapatkan user yang namanya sesuai
-          const filteredUsers = allUsers.filter(user => 
-            user.nama && user.nama.toLowerCase().includes(namaFilter.toLowerCase())
-          );
-          
-          if (filteredUsers.length > 0) {
-            query = query.where('userId', 'in', filteredUsers.map(u => u.id));
-          } else {
-            // Tidak ada user yang sesuai, kosongkan tabel
-            $("#tableBody").innerHTML = `
-              <tr>
-                <td colspan="6" style="text-align:center;padding:20px">
-                  <span class="material-symbols-rounded">search_off</span>
-                  Tidak ditemukan data untuk filter tersebut
-                </td>
-              </tr>
-            `;
-            return;
-          }
-        }
-        
-        // Terapkan filter periode
-        const periode = $("#fPeriode").value;
-        const now = getWIBDate();
-        
-        if (periode === "harian") {
-          const startOfDay = new Date(now);
-          startOfDay.setHours(0, 0, 0, 0);
-          query = query.where('waktu', '>=', startOfDay);
-        } else if (periode === "mingguan") {
-          const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - now.getDay());
-          startOfWeek.setHours(0, 0, 0, 0);
-          query = query.where('waktu', '>=', startOfWeek);
-        } else if (periode === "bulanan") {
-          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          query = query.where('waktu', '>=', startOfMonth);
-        } else if (periode === "tahunan") {
-          const startOfYear = new Date(now.getFullYear(), 0, 1);
-          query = query.where('waktu', '>=', startOfYear);
-        } else if (periode === "custom") {
-          const dari = $("#fDari").value;
-          const sampai = $("#fSampai").value;
-          
-          if (dari && sampai) {
-            const startDate = new Date(dari);
-            const endDate = new Date(sampai);
-            endDate.setHours(23, 59, 59, 999);
-            
-            query = query.where('waktu', '>=', startDate)
-                         .where('waktu', '<=', endDate);
-          }
-        }
-        
-        // Terapkan limit
-        const limit = $("#fShow").value === "all" ? 1000 : parseInt($("#fShow").value);
-        if ($("#fShow").value !== "all") {
-          query = query.limit(limit);
-        }
-        
-        const snapshot = await query.get();
-        const tableBody = $("#tableBody");
-        tableBody.innerHTML = "";
-        
-        if (snapshot.empty) {
-          tableBody.innerHTML = `
-            <tr>
-              <td colspan="6" style="text-align:center;padding:20px">
-                <span class="material-symbols-rounded">history</span>
-                Tidak ada riwayat presensi
-              </td>
-            </tr>
-          `;
-          return;
-        }
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const waktu = data.waktu.toDate();
-          const options = { 
-            day: 'numeric', 
-            month: 'short', 
-            year: 'numeric',
-            hour: '2-digit', 
-            minute: '2-digit' 
-          };
-          
-          const waktuFormatted = waktu.toLocaleDateString('id-ID', options);
-          const statusClass = data.status === "Tepat Waktu" ? "s-good" : 
-                             data.status === "Terlambat" ? "s-warn" : "s-bad";
-          
-          tableBody.innerHTML += `
-            <tr>
-              <td>${waktuFormatted}</td>
-              <td>${data.nama || "Unknown"}</td>
-              <td>${data.jenis === "berangkat" ? "Berangkat" : "Pulang"}</td>
-              <td><span class="status ${statusClass}">${data.status.toLowerCase()}</span></td>
-              <td>${data.lokasi ? `${data.lokati.latitude.toFixed(4)}, ${data.lokati.longitude.toFixed(4)}` : "-"}</td>
-              <td><a href="${data.foto}" target="_blank">Lihat Foto</a></td>
-            </tr>
-          `;
-        });
-      } catch (error) {
-        console.error("Error loading riwayat:", error);
-        toast("Gagal memuat riwayat presensi", "error");
-      }
-    }
-
-    // Muat permintaan cuti
-    async function loadPermintaanCuti() {
-      try {
-        const snapshot = await db.collection('cuti')
-          .where('status', '==', 'pending')
-          .orderBy('createdAt', 'desc')
-          .get();
-        
-        const cutiList = $("#cutiList");
-        const notifBadge = $("#notifBadge");
-        
-        cutiList.innerHTML = "";
-        
-        if (snapshot.empty) {
-          cutiList.innerHTML = `
-            <div class="cuti-item">
-              <div style="text-align:center;padding:20px">
-                <span class="material-symbols-rounded">check_circle</span>
-                Tidak ada permintaan cuti
-              </div>
-            </div>
-          `;
-          notifBadge.style.display = "none";
-          return;
-        }
-        
-        notifBadge.textContent = snapshot.size;
-        notifBadge.style.display = "grid";
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const tanggal = data.tanggal.toDate();
-          const createdAt = data.createdAt.toDate();
-          
-          const tanggalFormatted = tanggal.toLocaleDateString('id-ID', { 
-            day: 'numeric', 
-            month: 'long', 
-            year: 'numeric'
-          });
-          
-          const waktuFormatted = createdAt.toLocaleDateString('id-ID', { 
-            day: 'numeric', 
-            month: 'long', 
-            year: 'numeric',
-            hour: '2-digit', 
-            minute: '2-digit' 
-          });
-          
-          cutiList.innerHTML += `
-            <div class="cuti-item">
-              <div><strong>${data.nama}</strong> mengajukan cuti <strong>${data.jenis}</strong></div>
-              <div>Tanggal: ${tanggalFormatted}</div>
-              ${data.catatan ? `<div>Keterangan: ${data.catatan}</div>` : ''}
-              <div style="font-size:12px;opacity:0.7">Diajukan pada: ${waktuFormatted}</div>
-              <div class="cuti-actions">
-                <button class="btn approve-btn" data-id="${doc.id}" style="background:var(--good)">
-                  <span class="material-symbols-rounded">check</span> Setujui
-                </button>
-                <button class="btn reject-btn" data-id="${doc.id}" style="background:var(--bad)">
-                  <span class="material-symbols-rounded">close</span> Tolak
-                </button>
-              </div>
-            </div>
-          `;
-        });
-        
-        // Tambah event listener untuk approve/reject
-        document.querySelectorAll('.approve-btn').forEach(btn => {
-          btn.addEventListener('click', function() {
-            const cutiId = this.getAttribute('data-id');
-            processCuti(cutiId, 'approved');
-          });
-        });
-        
-        document.querySelectorAll('.reject-btn').forEach(btn => {
-          btn.addEventListener('click', function() {
-            const cutiId = this.getAttribute('data-id');
-            processCuti(cutiId, 'rejected');
-          });
-        });
-      } catch (error) {
-        console.error("Error loading cuti:", error);
-        toast("Gagal memuat permintaan cuti", "error");
-      }
-    }
-
-    // Proses permintaan cuti (approve/reject)
-    async function processCuti(cutiId, status) {
-      try {
-        const cutiDoc = await db.collection('cuti').doc(cutiId).get();
-        const cutiData = cutiDoc.data();
-        
-        // Update status cuti
-        await db.collection('cuti').doc(cutiId).update({
-          status: status,
-          processedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          processedBy: currentUser.uid
-        });
-        
-        // Kirim notifikasi ke user
-        const statusText = status === 'approved' ? 'disetujui' : 'ditolak';
-        await db.collection('notifications').add({
-          pesan: `Permintaan cuti Anda telah ${statusText}`,
-          type: "cuti",
-          targetUid: cutiData.userId,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Jika disetujui, buat presensi cuti
-        if (status === 'approved') {
-          await db.collection('presensi').add({
-            userId: cutiData.userId,
-            nama: cutiData.nama,
-            jenis: 'cuti',
-            status: `Cuti: ${cutiData.jenis}`,
-            waktu: cutiData.tanggal,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-        
-        // Muat ulang permintaan cuti
-        loadPermintaanCuti();
-        
-        toast(`Cuti telah ${statusText}`, "success");
-      } catch (error) {
-        console.error("Error processing cuti:", error);
-        toast("Gagal memproses cuti", "error");
-      }
-    }
-
-    // Setup event listeners
-    function setupEventListeners() {
-      // Apply filters
-      $("#applyFilter").addEventListener('click', loadRiwayatPresensi);
-      
-      // Period filter change
-      $("#fPeriode").addEventListener('change', () => {
-        const period = $("#fPeriode").value;
-        $("#customDateRange").style.display = period === 'custom' ? 'flex' : 'none';
-      });
-      
-      // Export CSV
-      $("#exportCsv").addEventListener('click', exportToCSV);
-      
-      // Profile dialog
-      $("#profileBtn").addEventListener('click', () => {
-        $("#profileDlg").showModal();
-      });
-      
-      // Save profile
-      $("#saveProfileBtn").addEventListener('click', saveProfile);
-      
-      // Create user
-      $("#createUserBtn").addEventListener('click', createUser);
-      
-      // Logout
-      $("#logoutBtn").addEventListener('click', logout);
-      
-      // Notifications dialog
-      $("#notifBtn").addEventListener('click', () => {
-        $("#notifDlg").showModal();
-      });
-      
-      // Announce target change
-      $("#announceTarget").addEventListener('change', () => {
-        const target = $("#announceTarget").value;
-        $("#userSelection").style.display = target === 'specific' ? 'block' : 'none';
-      });
-      
-      // Send announcement
-      $("#sendAnnounce").addEventListener('click', sendAnnouncement);
-      
-      // Time rules dialog
-      $("#timeRulesFab").addEventListener('click', () => {
-        $("#timeRulesDlg").showModal();
-      });
-      
-      // Rules target change
-      $("#rulesTarget").addEventListener('change', () => {
-        const target = $("#rulesTarget").value;
-        $("#rulesUserSelection").style.display = target === 'specific' ? 'block' : 'none';
-      });
-      
-      // Save time rules
-      $("#saveRulesBtn").addEventListener('click', saveTimeRules);
-      
-      // Save schedule settings
-      $("#saveSchedule").addEventListener('click', saveScheduleSettings);
-      
-      // Upload foto profil
-      $("#pfpFile").addEventListener('change', uploadFotoProfil);
-    }
-
-    // Export ke CSV
-    async function exportToCSV() {
-      try {
-        $("#exportCsv").disabled = true;
-        $("#exportCsv").innerHTML = '<span class="spinner"></span> Mengekspor...';
-        
-        // Dapatkan data yang sudah difilter
-        let query = db.collection('presensi')
-          .orderBy('waktu', 'desc');
-        
-        // Terapkan filter yang sama dengan tampilan
-        const namaFilter = $("#fNama").value.trim();
-        if (namaFilter) {
-          const filteredUsers = allUsers.filter(user => 
-            user.nama && user.nama.toLowerCase().includes(namaFilter.toLowerCase())
-          );
-          
-          if (filteredUsers.length > 0) {
-            query = query.where('userId', 'in', filteredUsers.map(u => u.id));
-          }
-        }
-        
-        // Terapkan filter periode
-        const periode = $("#fPeriode").value;
-        const now = getWIBDate();
-        
-        if (periode === "harian") {
-          const startOfDay = new Date(now);
-          startOfDay.setHours(0, 0, 0, 0);
-          query = query.where('waktu', '>=', startOfDay);
-        } else if (periode === "mingguan") {
-          const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - now.getDay());
-          startOfWeek.setHours(0, 0, 0, 0);
-          query = query.where('waktu', '>=', startOfWeek);
-        } else if (periode === "bulanan") {
-          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          query = query.where('waktu', '>=', startOfMonth);
-        } else if (periode === "tahunan") {
-          const startOfYear = new Date(now.getFullYear(), 0, 1);
-          query = query.where('waktu', '>=', startOfYear);
-        } else if (periode === "custom") {
-          const dari = $("#fDari").value;
-          const sampai = $("#fSampai").value;
-          
-          if (dari && sampai) {
-            const startDate = new Date(dari);
-            const endDate = new Date(sampai);
-            endDate.setHours(23, 59, 59, 999);
-            
-            query = query.where('waktu', '>=', startDate)
-                         .where('waktu', '<=', endDate);
-          }
-        }
-        
-        const snapshot = await query.get();
-        
-        if (snapshot.empty) {
-          toast("Tidak ada data untuk diekspor", "warning");
-          $("#exportCsv").disabled = false;
-          $("#exportCsv").innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-          return;
-        }
-        
-        // Format data untuk CSV
-        let csvData = "Nama,Waktu,Jenis,Status,Koordinat\n";
-        
-        // Kelompokkan berdasarkan user dan urutkan
-        const dataByUser = {};
-        
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const userID = data.userId;
-          
-          if (!dataByUser[userID]) {
-            dataByUser[userID] = [];
-          }
-          
-          dataByUser[userID].push({
-            waktu: data.waktu.toDate(),
-            jenis: data.jenis,
-            status: data.status,
-            lokasi: data.lokasi,
-            nama: data.nama
-          });
-        });
-        
-        // Urutkan user berdasarkan nama
-        const sortedUserIDs = Object.keys(dataByUser).sort((a, b) => {
-          const nameA = dataByUser[a][0].nama || "";
-          const nameB = dataByUser[b][0].nama || "";
-          return nameA.localeCompare(nameB);
-        });
-        
-        // Format data sesuai STDR
-        sortedUserIDs.forEach(userID => {
-          const userData = dataByUser[userID];
-          const userName = userData[0].nama;
-          
-          // Urutkan data user berdasarkan waktu
-          userData.sort((a, b) => a.waktu - b.waktu);
-          
-          // Tambahkan header user
-          csvData += `\n${userName}\n`;
-          
-          // Tambahkan data presensi
-          userData.forEach(entry => {
-            const waktuFormatted = entry.waktu.toLocaleDateString('id-ID', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-            
-            const koordinat = entry.lokasi ? 
-              `${entry.lokati.latitude.toFixed(4)},${entry.lokati.longitude.toFixed(4)}` : "";
-            
-            csvData += `,${waktuFormatted},${entry.jenis},${entry.status},${koordinat}\n`;
-          });
-        });
-        
-        // Buat file dan download
-        const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        const date = new Date().toISOString().split('T')[0];
-        
-        link.setAttribute("href", url);
-        link.setAttribute("download", `laporan-presensi-${date}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        $("#exportCsv").disabled = false;
-        $("#exportCsv").innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-        
-        toast("CSV berhasil diekspor", "success");
-      } catch (error) {
-        console.error("Error exporting CSV:", error);
-        $("#exportCsv").disabled = false;
-        $("#exportCsv").innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-        toast("Gagal mengekspor CSV", "error");
-      }
-    }
-
-    // Simpan profil
-    async function saveProfile() {
-      try {
-        const nama = $("#nama").value.trim();
-        const alamat = $("#alamat").value.trim();
-        
-        if (!nama) {
-          toast("Nama tidak boleh kosong", "error");
-          return;
-        }
-        
-        await db.collection('users').doc(currentUser.uid).update({
-          nama: nama,
-          alamat: alamat,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        userData.nama = nama;
-        userData.alamat = alamat;
-        
-        toast("Profil berhasil disimpan", "success");
-        $("#profileDlg").close();
-      } catch (error) {
-        console.error("Error saving profile:", error);
-        toast("Gagal menyimpan profil", "error");
-      }
-    }
-
-    // Buat user baru
-    async function createUser() {
-      const email = $("#newEmail").value.trim();
-      const password = $("#newPass").value.trim();
-      
-      if (!email || !password) {
-        toast("Email dan password harus diisi", "error");
-        return;
-      }
-      
-      if (!email.endsWith('@fupa.id')) {
-        toast("Email harus menggunakan domain @fupa.id", "error");
-        return;
-      }
-      
-      try {
-        $("#createUserBtn").disabled = true;
-        $("#createUserBtn").innerHTML = '<span class="spinner"></span> Membuat...';
-        
-        // Buat user di Firebase Auth
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-        const newUser = userCredential.user;
-        
-        // Simpan data user di Firestore
-        await db.collection('users').doc(newUser.uid).set({
-          email: email,
-          nama: email.split('@')[0],
-          role: "karyawan",
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Sign out user yang baru dibuat (kita tidak ingin tetap login sebagai user baru)
-        await auth.signOut();
-        
-        // Login kembali sebagai admin
-        await auth.signInWithEmailAndPassword(currentUser.email, currentUser.password);
-        
-        $("#createUserBtn").disabled = false;
-        $("#createUserBtn").innerHTML = '<span class="material-symbols-rounded">person_add</span> Buat';
-        
-        // Reset form
-        $("#newEmail").value = "";
-        $("#newPass").value = "";
-        
-        // Muat ulang daftar user
-        await loadAllUsers();
-        
-        toast("Akun berhasil dibuat", "success");
-      } catch (error) {
-        console.error("Error creating user:", error);
-        $("#createUserBtn").disabled = false;
-        $("#createUserBtn").innerHTML = '<span class="material-symbols-rounded">person_add</span> Buat';
-        
-        if (error.code === 'auth/email-already-in-use') {
-          toast("Email sudah digunakan", "error");
-        } else {
-          toast("Gagal membuat akun", "error");
-        }
-      }
-    }
-
-    // Kirim pengumuman
-    async function sendAnnouncement() {
-      const pesan = $("#announceText").value.trim();
-      const target = $("#announceTarget").value;
-      
-      if (!pesan) {
-        toast("Pesan pengumuman tidak boleh kosong", "error");
-        return;
-      }
-      
-      try {
-        $("#sendAnnounce").disabled = true;
-        $("#sendAnnounce").innerHTML = '<span class="spinner"></span> Mengirim...';
-        
-        let targetUid = "all";
-        
-        if (target === "specific" && selectedUsers.length > 0) {
-          // Kirim ke user tertentu
-          for (const userId of selectedUsers) {
-            await db.collection('notifications').add({
-              pesan: pesan,
-              type: "pengumuman",
-              targetUid: userId,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          }
-        } else {
-          // Kirim ke semua user
-          await db.collection('notifications').add({
-            pesan: pesan,
-            type: "pengumuman",
-            targetUid: "all",
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-        
-        $("#sendAnnounce").disabled = false;
-        $("#sendAnnounce").innerHTML = '<span class="material-symbols-rounded">send</span> Kirim';
-        $("#announceText").value = "";
-        
-        toast("Pengumuman berhasil dikirim", "success");
-      } catch (error) {
-        console.error("Error sending announcement:", error);
-        $("#sendAnnounce").disabled = false;
-        $("#sendAnnounce").innerHTML = '<span class="material-symbols-rounded">send</span> Kirim';
-        toast("Gagal mengirim pengumuman", "error");
-      }
-    }
-
-    // Simpan aturan waktu
-    async function saveTimeRules() {
-      const target = $("#rulesTarget").value;
-      const berangkat = $("#rulesBerangkat").value;
-      const pulang = $("#rulesPulang").value;
-      const liburOptions = $("#rulesLibur").selectedOptions;
-      const hariLibur = Array.from(liburOptions).map(opt => parseInt(opt.value));
-      
-      if (!berangkat || !pulang) {
-        toast("Waktu berangkat dan pulang harus diisi", "error");
-        return;
-      }
-      
-      try {
-        $("#saveRulesBtn").disabled = true;
-        $("#saveRulesBtn").innerHTML = '<span class="spinner"></span> Menyimpan...';
-        
-        const [berangkatJam, berangkatMenit] = berangkat.split(':').map(Number);
-        const [pulangJam, pulangMenit] = pulang.split(':').map(Number);
-        
-        const aturanWaktu = {
-          berangkatAwal: berangkatJam * 60 + berangkatMenit,
-          berangkatAkhir: berangkatJam * 60 + berangkatMenit + 30, // 30 menit sesi berangkat
-          pulangAwal: pulangJam * 60 + pulangMenit,
-          pulangAkhir: pulangJam * 60 + pulangMenit + 60, // 60 menit sesi pulang
-          toleransi: 20,
-          hariLibur: hariLibur
-        };
-        
-        if (target === "all") {
-          // Simpan sebagai aturan default
-          await db.collection('settings').doc('waktuDefault').set({
-            aturan: aturanWaktu,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser.uid
-          });
-        } else if (target === "specific" && selectedRulesUsers.length > 0) {
-          // Simpan aturan untuk user tertentu
-          for (const userId of selectedRulesUsers) {
-            await db.collection('users').doc(userId).update({
-              aturanWaktuKustom: aturanWaktu,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          }
-        }
-        
-        $("#saveRulesBtn").disabled = false;
-        $("#saveRulesBtn").innerHTML = '<span class="material-symbols-rounded">save</span> Simpan Aturan';
-        $("#timeRulesDlg").close();
-        
-        toast("Aturan waktu berhasil disimpan", "success");
-      } catch (error) {
-        console.error("Error saving time rules:", error);
-        $("#saveRulesBtn").disabled = false;
-        $("#saveRulesBtn").innerHTML = '<span class="material-symbols-rounded">save</span> Simpan Aturan';
-        toast("Gagal menyimpan aturan waktu", "error");
-      }
-    }
-
-    // Simpan pengaturan jadwal
-    async function saveScheduleSettings() {
-      const setting = $("#wajibHari").value;
-      
-      try {
-        await db.collection('settings').doc('overrideHariIni').set({
-          setting: setting,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedBy: currentUser.uid
-        });
-        
-        toast("Pengaturan berhasil disimpan", "success");
-      } catch (error) {
-        console.error("Error saving schedule:", error);
-        toast("Gagal menyimpan pengaturan", "error");
-      }
-    }
-
-    // Upload foto profil
-    async function uploadFotoProfil(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      
-      try {
-        // Kompres gambar
-        const compressedImage = await compressImage(file);
-        const compressedBlob = await (await fetch(compressedImage)).blob();
-        
-        // Upload ke Cloudinary
-        const fotoUrl = await uploadToCloudinary(compressedBlob, "profil");
-        
-        // Update ke Firestore
-        await db.collection('users').doc(currentUser.uid).update({
-          fotoProfil: fotoUrl,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Update UI
-        $("#pfp").src = fotoUrl;
-        userData.fotoProfil = fotoUrl;
-        
-        toast("Foto profil berhasil diubah", "success");
-      } catch (error) {
-        console.error("Error uploading profile photo:", error);
-        toast("Gagal mengubah foto profil", "error");
-      }
-    }
-
-    // Logout
-    async function logout() {
-      try {
-        await auth.signOut();
-        window.location.href = "index.html";
-      } catch (error) {
-        console.error("Error logging out:", error);
-        toast("Gagal keluar", "error");
-      }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
     }
   </script>
 </body>
