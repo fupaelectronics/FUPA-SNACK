@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
-    /* CSS dari referensi dipertahankan */
     :root{
       --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300;
       --card:#ffffffcc; --txt:#222; --accent:#673AB7; --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
@@ -144,7 +143,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script>
-    // Firebase config sesuai data kunci
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
       authDomain: "fupa-snack.firebaseapp.com",
@@ -157,15 +156,14 @@
     // Inisialisasi Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
-    const db = firebase.firestore();
 
-    // UID roles sesuai data kunci
-    const ADMIN_UIDS = new Set([
+    // UID roles
+    const ADMIN_UIDS = [
       "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
       "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-    ]);
+    ];
 
-    const KARYAWAN_UIDS = new Set([
+    const KARYAWAN_UIDS = [
       "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
       "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
       "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
@@ -177,7 +175,7 @@
       "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
       "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
       "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
-    ]);
+    ];
 
     // Util UI
     const $ = (sel) => document.querySelector(sel);
@@ -191,9 +189,9 @@
 
     // Redirect berdasarkan role
     function redirectByRole(uid) {
-      if (ADMIN_UIDS.has(uid)) {
+      if (ADMIN_UIDS.includes(uid)) {
         return "admin.html";
-      } else if (KARYAWAN_UIDS.has(uid)) {
+      } else if (KARYAWAN_UIDS.includes(uid)) {
         return "karyawan.html";
       } else {
         auth.signOut();
