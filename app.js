@@ -15,15 +15,37 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Variabel global
-let currentUser = null;
-let userProfile = null;
+// Data UID Admin dan Karyawan
+const ADMIN_UIDS = [
+  "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+  "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+];
+
+const KARYAWAN_UIDS = [
+  "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
+  "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
+  "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
+  "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
+  "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
+  "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
+  "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
+  "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
+  "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
+  "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
+  "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
+];
 
 // Fungsi utilitas
 const $ = (sel) => document.querySelector(sel);
-const showToast = (message, type = 'info') => {
-  const toast = $('#toast');
-  if (!toast) return;
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// Toast notification
+function showToast(message, type = 'info') {
+  // Hapus toast sebelumnya jika ada
+  const existingToast = document.getElementById('custom-toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
   
   const colors = {
     success: '#2e7d32',
@@ -32,91 +54,54 @@ const showToast = (message, type = 'info') => {
     info: '#111'
   };
   
-  toast.style.backgroundColor = colors[type] || colors.info;
+  const toast = document.createElement('div');
+  toast.id = 'custom-toast';
+  toast.style.cssText = `
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background: ${colors[type] || colors.info};
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    z-index: 1000;
+    transition: opacity 0.3s;
+  `;
   toast.textContent = message;
-  toast.style.display = "block";
-  setTimeout(() => { toast.style.display = "none"; }, 3000);
-};
+  
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
 
-// Fungsi untuk mendapatkan waktu server dari Firestore
-const getServerTime = () => {
-  return firebase.firestore.Timestamp.now();
-};
+// Format tanggal Indonesia
+function formatDate(date, includeTime = true) {
+  const optionsDate = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  };
+  
+  const optionsTime = {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  };
+  
+  const dateStr = date.toLocaleDateString('id-ID', optionsDate);
+  const timeStr = date.toLocaleTimeString('id-ID', optionsTime);
+  
+  return includeTime ? `${dateStr}, ${timeStr}` : dateStr;
+}
 
-// Fungsi untuk memeriksa status login
-const checkAuthState = () => {
-  auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      currentUser = user;
-      
-      // Dapatkan data profil pengguna
-      try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        
-        if (userDoc.exists) {
-          userProfile = userDoc.data();
-          
-          // Jika data pengguna kosong, tampilkan popup
-          if ((!userProfile.nama || !userProfile.alamat) && window.showProfilePopup) {
-            window.showProfilePopup();
-          }
-          
-          // Redirect jika role tidak sesuai dengan halaman
-          const isAdminPage = window.location.pathname.includes('admin.html');
-          const isKaryawanPage = window.location.pathname.includes('karyawan.html');
-          
-          if (isAdminPage && userProfile.role !== 'admin') {
-            window.location.href = 'karyawan.html';
-          } else if (isKaryawanPage && userProfile.role !== 'karyawan') {
-            window.location.href = 'admin.html';
-          }
-          
-          // Muat data halaman
-          if (typeof loadPageData === 'function') {
-            loadPageData();
-          }
-        } else {
-          // Buat dokumen pengguna jika tidak ada
-          await db.collection('users').doc(user.uid).set({
-            email: user.email,
-            role: user.email === 'karomi@fupa.id' || user.email === 'annisa@fupa.id' ? 'admin' : 'karyawan',
-            createdAt: getServerTime()
-          });
-          
-          // Tampilkan popup untuk melengkapi profil
-          if (window.showProfilePopup) {
-            window.showProfilePopup();
-          }
-        }
-      } catch (error) {
-        console.error('Error getting user document:', error);
-        showToast('Error memuat profil pengguna', 'error');
-      }
-    } else {
-      // Redirect ke halaman login jika belum login
-      if (!window.location.pathname.includes('index.html')) {
-        window.location.href = 'index.html';
-      }
-    }
-  });
-};
-
-// Fungsi untuk logout
-const logout = async () => {
-  try {
-    await auth.signOut();
-    showToast('Berhasil keluar', 'success');
-    setTimeout(() => {
-      window.location.href = 'index.html';
-    }, 1000);
-  } catch (error) {
-    console.error('Error signing out:', error);
-    showToast('Gagal keluar', 'error');
-  }
-};
-
-// Fungsi untuk mengompres gambar menjadi 10KB
-const compressImage = (file) => {
+// Kompres gambar ke 10KB sebelum upload ke Cloudinary
+async function compressImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -127,59 +112,51 @@ const compressImage = (file) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Tentukan ukuran canvas (resize gambar)
-        let width = img.width;
-        let height = img.height;
-        const maxDimension = 800; // Ukuran maksimum
+        // Set ukuran canvas sesuai gambar asli
+        canvas.width = img.width;
+        canvas.height = img.height;
         
-        if (width > height) {
-          if (width > maxDimension) {
-            height *= maxDimension / width;
-            width = maxDimension;
+        // Gambar ke canvas
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Kompresi progresif hingga ukuran < 10KB
+        let quality = 0.9;
+        let compressedDataUrl;
+        
+        const compress = () => {
+          compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          // Hitung ukuran file dari data URL
+          const head = 'data:image/jpeg;base64,';
+          const imgFileSize = Math.round((compressedDataUrl.length - head.length) * 3 / 4);
+          
+          if (imgFileSize > 10000 && quality > 0.1) {
+            quality -= 0.1;
+            compress();
+          } else {
+            // Konversi data URL ke blob
+            fetch(compressedDataUrl)
+              .then(res => res.blob())
+              .then(blob => resolve(blob))
+              .catch(err => reject(err));
           }
-        } else {
-          if (height > maxDimension) {
-            width *= maxDimension / height;
-            height = maxDimension;
-          }
-        }
+        };
         
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Gambar ulang gambar dengan kualitas lebih rendah
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Konversi ke blob dengan kualitas 0.6 (bisa disesuaikan)
-        canvas.toBlob(
-          (blob) => {
-            // Jika masih lebih besar dari 10KB, kurangi kualitas
-            if (blob.size > 10 * 1024) {
-              canvas.toBlob(
-                (finalBlob) => resolve(finalBlob),
-                'image/jpeg',
-                0.5
-              );
-            } else {
-              resolve(blob);
-            }
-          },
-          'image/jpeg',
-          0.7
-        );
+        compress();
       };
     };
     reader.onerror = error => reject(error);
   });
-};
+}
 
-// Fungsi untuk mengupload gambar ke Cloudinary
-const uploadToCloudinary = async (file) => {
+// Upload ke Cloudinary
+async function uploadToCloudinary(blob) {
+  const formData = new FormData();
+  formData.append('file', blob);
+  formData.append('upload_preset', 'FupaSnack');
+  formData.append('cloud_name', 'da7idhh4f');
+  
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', 'FupaSnack');
-    
     const response = await fetch(`https://api.cloudinary.com/v1_1/da7idhh4f/image/upload`, {
       method: 'POST',
       body: formData
@@ -189,112 +166,94 @@ const uploadToCloudinary = async (file) => {
     return data.secure_url;
   } catch (error) {
     console.error('Error uploading to Cloudinary:', error);
-    throw new Error('Gagal mengupload gambar');
+    throw error;
   }
-};
+}
+
+// Deteksi status presensi berdasarkan aturan waktu
+async function getPresenceStatus(uid, waktuServer, jenisPresensi) {
+  try {
+    // Cek aturan waktu user terlebih dahulu
+    const userRulesDoc = await db.collection('aturanwaktuuser').doc(uid).get();
+    let rules;
+    
+    if (userRulesDoc.exists) {
+      rules = userRulesDoc.data();
+    } else {
+      // Jika tidak ada aturan khusus, gunakan aturan default
+      const defaultRulesDoc = await db.collection('aturanwaktudefault').doc('default').get();
+      rules = defaultRulesDoc.exists ? defaultRulesDoc.data() : {
+        jam_berangkat: '05:30',
+        jam_pulang: '10:00',
+        toleransi: 20,
+        hari_libur: [0] // Minggu
+      };
+    }
+    
+    // Parse waktu
+    const [jam, menit] = rules[jenisPresensi === 'berangkat' ? 'jam_berangkat' : 'jam_pulang'].split(':');
+    const waktuPresensi = new Date(waktuServer);
+    waktuPresensi.setHours(parseInt(jam), parseInt(menit), 0, 0);
+    
+    // Cek hari libur
+    const hariIni = waktuServer.getDay();
+    if (rules.hari_libur.includes(hariIni)) {
+      return 'Libur';
+    }
+    
+    // Hitung batas waktu dengan toleransi
+    const batasWaktu = new Date(waktuPresensi.getTime() + (rules.toleransi * 60 * 1000));
+    
+    // Cek status
+    if (waktuServer < waktuPresensi) {
+      return 'Di Luar Sesi Presensi';
+    } else if (waktuServer <= batasWaktu) {
+      return 'Tepat Waktu';
+    } else {
+      return 'Terlambat';
+    }
+  } catch (error) {
+    console.error('Error getting presence status:', error);
+    return 'Error';
+  }
+}
 
 // Fungsi untuk mendapatkan aturan waktu
-const getTimeRules = async (uid) => {
+async function getTimeRules(uid) {
   try {
-    // Cek aturan khusus user
+    // Cek aturan waktu user terlebih dahulu
     const userRulesDoc = await db.collection('aturanwaktuuser').doc(uid).get();
     
     if (userRulesDoc.exists) {
       return userRulesDoc.data();
+    } else {
+      // Jika tidak ada aturan khusus, gunakan aturan default
+      const defaultRulesDoc = await db.collection('aturanwaktudefault').doc('default').get();
+      return defaultRulesDoc.exists ? defaultRulesDoc.data() : {
+        jam_berangkat: '05:30',
+        jam_pulang: '10:00',
+        toleransi: 20,
+        hari_libur: [0] // Minggu
+      };
     }
-    
-    // Jika tidak ada aturan khusus, gunakan aturan default
-    const defaultRulesQuery = await db.collection('aturanwaktudefault').orderBy('createdAt', 'desc').limit(1).get();
-    
-    if (!defaultRulesQuery.empty) {
-      return defaultRulesQuery.docs[0].data();
-    }
-    
-    // Return aturan default jika tidak ada di database
-    return {
-      jam_berangkat: '05:30',
-      jam_pulang: '10:00',
-      toleransi: 20,
-      hari_libur: [0], // 0 = Minggu
-      updatedAt: getServerTime()
-    };
   } catch (error) {
     console.error('Error getting time rules:', error);
-    showToast('Error mengambil aturan waktu', 'error');
-    
-    // Return default values jika terjadi error
-    return {
-      jam_berangkat: '05:30',
-      jam_pulang: '10:00',
-      toleransi: 20,
-      hari_libur: [0]
-    };
+    return null;
   }
-};
+}
 
-// Fungsi untuk menentukan status presensi
-const determinePresenceStatus = async (waktu, jenis, uid) => {
-  try {
-    const rules = await getTimeRules(uid);
-    
-    // Konversi waktu ke Date object
-    const waktuDate = waktu.toDate();
-    const hari = waktuDate.getDay(); // 0 = Minggu, 1 = Senin, dst.
-    
-    // Cek apakah hari libur
-    if (rules.hari_libur.includes(hari)) {
-      return 'Libur';
-    }
-    
-    // Parse jam dari aturan
-    const [berangkatJam, berangkatMenit] = rules.jam_berangkat.split(':').map(Number);
-    const [pulangJam, pulangMenit] = rules.jam_pulang.split(':').map(Number);
-    
-    // Buat objek Date untuk waktu berangkat dan pulang
-    const berangkatTime = new Date(waktuDate);
-    berangkatTime.setHours(berangkatJam, berangkatMenit, 0, 0);
-    
-    const pulangTime = new Date(waktuDate);
-    pulangTime.setHours(pulangJam, pulangMenit, 0, 0);
-    
-    // Hitung waktu toleransi (dalam milidetik)
-    const toleransiMs = rules.toleransi * 60 * 1000;
-    
-    // Tentukan status berdasarkan jenis presensi
-    if (jenis === 'berangkat') {
-      const batasAwal = new Date(berangkatTime.getTime() - toleransiMs);
-      const batasAkhir = new Date(berangkatTime.getTime() + toleransiMs);
-      
-      if (waktuDate < batasAwal || waktuDate > batasAkhir) {
-        return 'Di Luar Sesi Presensi';
-      }
-      
-      if (waktuDate <= berangkatTime) {
-        return 'Tepat Waktu';
-      } else {
-        return 'Terlambat';
-      }
-    } else if (jenis === 'pulang') {
-      const batasAwal = new Date(pulangTime.getTime() - toleransiMs);
-      const batasAkhir = new Date(pulangTime.getTime() + toleransiMs);
-      
-      if (waktuDate < batasAwal || waktuDate > batasAkhir) {
-        return 'Di Luar Sesi Presensi';
-      }
-      
-      if (waktuDate <= pulangTime) {
-        return 'Tepat Waktu';
-      } else {
-        return 'Terlambat';
-      }
-    }
-    
-    return 'Tidak Valid';
-  } catch (error) {
-    console.error('Error determining presence status:', error);
-    return 'Error';
-  }
+// Ekspor fungsi untuk digunakan di file lain
+window.fupaApp = {
+  auth,
+  db,
+  ADMIN_UIDS,
+  KARYAWAN_UIDS,
+  $,
+  $$,
+  showToast,
+  formatDate,
+  compressImage,
+  uploadToCloudinary,
+  getPresenceStatus,
+  getTimeRules
 };
-
-// Panggil fungsi untuk memeriksa status auth saat app.js dimuat
-checkAuthState();
