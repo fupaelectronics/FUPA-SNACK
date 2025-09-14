@@ -1,7 +1,7 @@
 {
-  "name": "Presensi FUPA Snack",
+  "name": "FUPA Presensi",
   "short_name": "FUPA Presensi",
-  "description": "Aplikasi presensi untuk karyawan FUPA Snack",
+  "description": "Sistem presensi digital untuk FUPA Snack",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#FFB300",
@@ -19,5 +19,6 @@
       "type": "image/svg"
     }
   ],
-  "categories": ["business", "productivity"]
+  "categories": ["business", "productivity"],
+  "lang": "id"
 }
