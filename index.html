@@ -23,7 +23,7 @@
       min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply; filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
       background:
         radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
         radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
@@ -142,8 +142,80 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="app.js"></script>
   <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      authDomain: "fupa-snack.firebaseapp.com",
+      projectId: "fupa-snack",
+      storageBucket: "fupa-snack.firebasestorage.app",
+      messagingSenderId: "972524876738",
+      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+    };
+
+    // Inisialisasi Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // UID Admin dan Karyawan
+    const ADMIN_UIDS = new Set([
+      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+    ]);
+
+    const KARYAWAN_UIDS = new Set([
+      "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
+      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
+      "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
+      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
+      "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
+      "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
+      "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
+      "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
+      "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
+      "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
+      "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
+    ]);
+
+    // Util UI
+    const $ = (sel) => document.querySelector(sel);
+    const toast = (msg) => {
+      const t = $("#toast");
+      if (!t) return alert(msg);
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 2200);
+    };
+
+    // Redirect berdasarkan role
+    async function redirectByRole(uid) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          if (userData.role === 'admin') {
+            return "admin.html";
+          } else if (userData.role === 'karyawan') {
+            return "karyawan.html";
+          }
+        }
+        
+        // Fallback ke UID list jika data role tidak ada
+        if (ADMIN_UIDS.has(uid)) {
+          return "admin.html";
+        } else if (KARYAWAN_UIDS.has(uid)) {
+          return "karyawan.html";
+        } else {
+          auth.signOut();
+          return null;
+        }
+      } catch (error) {
+        console.error('Error checking user role:', error);
+        return null;
+      }
+    }
+
     // UI only: toggle password eye
     document.getElementById('togglePass').onclick = () => {
       const inp = document.getElementById('password');
@@ -218,6 +290,19 @@
         document.getElementById('loginBtn').click();
       }
     });
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
   </script>
 </body>
 </html>
