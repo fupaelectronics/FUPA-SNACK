@@ -1,23 +1,26 @@
+// manifest.webmanifest
+// Cara setup:
+// 1. Simpan file ini di root folder proyek.
+// 2. Tambahkan di <head> index.html:
+//    <link rel="manifest" href="manifest.webmanifest">
+
 {
-  "name": "Presensi FUPA Snack",
-  "short_name": "FUPA Presensi",
-  "description": "Sistem presensi digital untuk FUPA Snack",
-  "start_url": "/index.html",
+  "name": "Presensi FUPA",
+  "short_name": "FUPA",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#FFB300",
-  "theme_color": "#FFB300",
-  "orientation": "portrait",
+  "background_color": "#FFF59D",
+  "theme_color": "#FFC107",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "src": "https://cdn-icons-png.flaticon.com/512/2919/2919600.png",
       "sizes": "192x192",
-      "type": "image/svg"
+      "type": "image/png"
     },
     {
-      "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
+      "src": "https://cdn-icons-png.flaticon.com/512/2919/2919600.png",
       "sizes": "512x512",
-      "type": "image/svg"
+      "type": "image/png"
     }
-  ],
-  "categories": ["business", "productivity"]
+  ]
 }
