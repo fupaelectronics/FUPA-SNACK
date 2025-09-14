@@ -1,15 +1,3 @@
-<!-- index.html -->
-<!-- Cara setup:
-1. Simpan file ini di root folder proyek.
-2. Tambahkan <link rel="manifest" href="manifest.webmanifest"> di <head>.
-3. Daftarkan service worker tepat sebelum </body>:
-   <script>
-     if ('serviceWorker' in navigator) {
-       navigator.serviceWorker.register('service-worker.js');
-     }
-   </script>
--->
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -23,237 +11,210 @@
   <style>
     :root{
       --bg1:#FFF59D; --bg2:#FFD54F; --bg3:#FFB300;
-      --card:#ffffffcc; --txt:#222; --accent:#673AB7;
-      --soft-shadow:0 10px 30px rgba(0,0,0,.15);
+      --card:#ffffffcc; --txt:#222; --accent:#673AB7; --good:#2e7d32; --warn:#f9a825; --bad:#c62828;
+      --soft-shadow: 0 10px 30px rgba(0,0,0,.15);
     }
     *{box-sizing:border-box}
     body{
-      margin:0;font-family:Inter,system-ui; color:var(--txt);
-      background:
-        radial-gradient(1200px 800px at 80% -10%, var(--bg3),transparent),
-        radial-gradient(1000px 600px at 0 0, var(--bg2),transparent),
-        linear-gradient(180deg,var(--bg1),var(--bg2)60%,var(--bg3));
-      min-height:100vh; overflow:hidden; position:relative;
+      margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto; color:var(--txt);
+      background: radial-gradient(1200px 800px at 80% -10%, var(--bg3), transparent),
+                  radial-gradient(1000px 600px at 0% 0%, var(--bg2), transparent),
+                  linear-gradient(180deg, var(--bg1), var(--bg2) 60%, var(--bg3));
+      min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute;inset:0;pointer-events:none;
-      mix-blend-mode:multiply;filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
       background:
-        radial-gradient(600px 400px at 20% 80%,rgba(255,255,255,.35),transparent),
-        radial-gradient(400px 300px at 80% 20%,rgba(255,255,255,.25),transparent);
-      animation:shimmer 10s ease-in-out infinite alternate;
+        radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
+        radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
+      animation: shimmer 10s ease-in-out infinite alternate;
     }
-    @keyframes shimmer{from{opacity:.7;transform:translateY(-10px)}to{opacity:1;transform:translateY(10px)}}
-    .leaf{
-      position:absolute;top:-10vh;
-      font-variation-settings:"FILL"1,"GRAD"200;
-      color:rgba(255,255,255,.8);
-      filter:drop-shadow(0 6px 12px rgba(0,0,0,.2));
-      animation:fall linear infinite;
-    }
+    @keyframes shimmer{ from{opacity:.7; transform:translateY(-10px)} to{opacity:1; transform:translateY(10px)} }
+    .leaf{ position:absolute; top:-10vh; font-variation-settings:"FILL" 1, "GRAD" 200; color:rgba(255,255,255,.8);
+      filter:drop-shadow(0 6px 12px rgba(0,0,0,.2)); animation: fall linear infinite; }
     @keyframes fall{
-      0%{transform:translate3d(var(--x,0),-10vh,0) rotate(0deg);opacity:.9}
-      100%{transform:translate3d(calc(var(--x,0)+var(--dx,0px)),110vh,0)rotate(360deg);opacity:.2}
+      0%{ transform:translate3d(var(--x,0), -10vh, 0) rotate(0deg); opacity:.9}
+      100%{ transform:translate3d(calc(var(--x,0) + var(--dx, 0px)), 110vh, 0) rotate(360deg); opacity:.2}
     }
-    .wrap{display:grid;place-items:center;min-height:100vh;padding:24px;position:relative;z-index:1}
+    .wrap{
+      position:relative; z-index:2; display:grid; place-items:center; min-height:100svh; padding:24px;
+    }
     .card{
-      width:min(520px,92vw);padding:24px;background:var(--card);
-      border-radius:20px;box-shadow:var(--soft-shadow);
-      backdrop-filter:blur(8px);position:relative;
+      width:min(520px, 92vw); background:var(--card); border-radius:20px; box-shadow:var(--soft-shadow);
+      backdrop-filter: blur(8px); padding:24px; overflow:hidden; position:relative;
     }
-    .brand{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-    h1{margin:0 0 8px;font-weight:800;letter-spacing:.2px}
-    p.sub{margin:0 0 16px;opacity:.8}
+    .card::before{
+      content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(255,255,255,.3), transparent);
+      mask: linear-gradient(#000 50%, transparent); pointer-events:none;
+    }
+    h1{margin:0 0 8px; font-weight:800; letter-spacing:.2px}
+    p.sub{margin:0 0 16px; opacity:.8}
     .input{
-      display:flex;align-items:center;gap:10px;
-      background:#fff;border:1px solid rgba(0,0,0,.06);
-      border-radius:14px;padding:12px 14px;margin:12px 0;
+      display:flex; align-items:center; gap:10px; background:#fff; border-radius:14px; padding:12px 14px; margin:12px 0;
+      border:1px solid rgba(0,0,0,.06);
     }
-    .input input{flex:1;border:none;outline:none;font-size:16px;background:transparent}
-    .row{
-      display:flex;align-items:center;justify-content:space-between;
-      margin-top:8px;gap:12px
+    .input input{
+      width:100%; border:none; outline:none; font-size:16px; background:transparent;
     }
+    .row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px}
     .btn{
-      display:inline-flex;align-items:center;gap:10px;
-      padding:12px 16px;font-weight:700;color:#fff;
-      background:linear-gradient(135deg,#FFB300,#FF8F00);
-      border:none;border-radius:14px;cursor:pointer;
-      box-shadow:0 10px 20px rgba(255,143,0,.25);
-      transition:transform .15s,filter .2s;
+      display:inline-flex; align-items:center; gap:10px; border:none; cursor:pointer; border-radius:14px;
+      padding:12px 16px; font-weight:700; color:#fff; background:linear-gradient(135deg, #FFB300, #FF8F00);
+      box-shadow:0 10px 20px rgba(255,143,0,.25); transition:transform .15s ease, filter .2s ease;
+      position: relative;
     }
-    .btn:hover{transform:translateY(-1px);filter:brightness(1.05)}
-    .btn:disabled{opacity:.8;cursor:not-allowed}
-    .hint{font-size:13px;opacity:.75}
+    .btn:hover{ transform:translateY(-1px); filter:brightness(1.05) }
+    .btn:disabled {
+      opacity: 0.8;
+      cursor: not-allowed;
+    }
+    .link{ color:#222; opacity:.8; text-decoration:underline; cursor:pointer }
+    .hint{ font-size:13px; opacity:.75; }
     .toast{
-      position:fixed;left:50%;bottom:18px;
-      transform:translateX(-50%);
-      background:#111;color:#fff;padding:10px 14px;
-      border-radius:12px;box-shadow:var(--soft-shadow);
-      display:none;z-index:2;
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#111; color:#fff; padding:10px 14px;
+      border-radius:12px; box-shadow:var(--soft-shadow); z-index:10; display:none;
     }
-    .spinner{
-      display:inline-block;width:16px;height:16px;
-      border:2px solid rgba(255,255,255,0.3);
-      border-radius:50%;border-top-color:#fff;
-      animation:spin 1s linear infinite;
+    .brand{
+      display:flex; align-items:center; gap:10px; margin-bottom:10px;
     }
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .success-message{
-      display:none;text-align:center;font-weight:600;
-      color:#2e7d32;margin-top:8px
+    .material-symbols-rounded{ font-variation-settings:"FILL" 1, "GRAD" 200; }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .success-message {
+      color: var(--good);
+      font-weight: 600;
+      margin-top: 8px;
+      text-align: center;
+      display: none;
     }
   </style>
 </head>
 <body>
   <div class="glow"></div>
-  <span class="material-symbols-rounded leaf" style="--x:10vw;--dx:-30px;left:10%;font-size:28px;animation-duration:11s">spa</span>
-  <span class="material-symbols-rounded leaf" style="--x:30vw;--dx:20px;left:30%;font-size:36px;animation-duration:13s;animation-delay:.5s">eco</span>
-  <span class="material-symbols-rounded leaf" style="--x:55vw;--dx:-15px;left:55%;font-size:30px;animation-duration:12s;animation-delay:1s">spa</span>
-  <span class="material-symbols-rounded leaf" style="--x:75vw;--dx:10px;left:75%;font-size:40px;animation-duration:15s;animation-delay:1.5s">eco</span>
+  <!-- daun jatuh -->
+  <span class="material-symbols-rounded leaf" style="left:10%; font-size:28px; --x:10vw; --dx:-30px; animation-duration:11s;">spa</span>
+  <span class="material-symbols-rounded leaf" style="left:30%; font-size:36px; --x:30vw; --dx:20px; animation-duration:13s; animation-delay:.5s;">eco</span>
+  <span class="material-symbols-rounded leaf" style="left:55%; font-size:30px; --x:55vw; --dx:-15px; animation-duration:12s; animation-delay:1s;">spa</span>
+  <span class="material-symbols-rounded leaf" style="left:75%; font-size:40px; --x:75vw; --dx:10px; animation-duration:15s; animation-delay:1.5s;">eco</span>
 
   <div class="wrap">
     <div class="card">
       <div class="brand">
-        <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
+        <span class="material-symbols-rounded" style="color:#FF8F00;">workspace_premium</span>
         <h1>Presensi FUPA</h1>
       </div>
-      <p class="sub">Masuk menggunakan email dan kata sandi. Hubungi admin jika bermasalah.</p>
+      <p class="sub">Masuk menggunakan email dan kata sandi. Jika mengalami kendala kata sandi, hubungi admin.</p>
+
       <div class="input">
         <span class="material-symbols-rounded">mail</span>
-        <input id="email" type="email" placeholder="Email kerja" autocomplete="username"/>
+        <input id="email" type="email" placeholder="Email kerja" autocomplete="username" />
       </div>
       <div class="input">
         <span class="material-symbols-rounded">lock</span>
-        <input id="password" type="password" placeholder="Kata sandi" autocomplete="current-password"/>
-        <button id="togglePass" class="btn" style="background:#eee;color:#222;box-shadow:none;padding:8px 10px;font-weight:600">
-          <span id="eye" class="material-symbols-rounded">visibility</span>
+        <input id="password" type="password" placeholder="Kata sandi" autocomplete="current-password" />
+        <button id="togglePass" class="btn" style="background:#eee;color:#222;box-shadow:none;padding:8px 10px;font-weight:600;">
+          <span class="material-symbols-rounded" id="eye">visibility</span>
         </button>
       </div>
       <div class="row">
         <span class="hint">Jika lupa sandi, hubungi admin.</span>
         <button id="loginBtn" class="btn">
           <span id="loginText">Masuk</span>
-          <span id="loginSpinner" class="spinner" style="display:none"></span>
+          <span id="loginSpinner" class="spinner" style="display:none;"></span>
         </button>
       </div>
       <div id="successMessage" class="success-message"></div>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div class="toast" id="toast"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="app.js"></script>
   <script>
-    // Firebase config (Fupa-Snack)
-    const firebaseConfig = {
-      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
-      authDomain: "fupa-snack.firebaseapp.com",
-      projectId: "fupa-snack",
-      storageBucket: "fupa-snack.firebasestorage.app",
-      messagingSenderId: "972524876738",
-      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-
-    // Role UIDs
-    const ADMIN_UIDS = new Set([
-      "O1SJ7hYop3UJjDcsA3JqT29aapI3",
-      "uB2XsyM6fXUj493cRlHCqpe2fxH3"
-    ]);
-    const KARYAWAN_UIDS = new Set([
-      "7NJ9xoMgQlUbi68CMQWFN5bYvF62",
-      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2",
-      "vB3i5h6offMxQslKf2U0J1ElpWS2",
-      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73",
-      "zl7xjZaI6BdCLT7Z2WA34oTcFV42",
-      "NainrtLo3BWRSJKImgIBYNLJEIv2",
-      "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2",
-      "dDq2zTPs12Tn2v0Zh4IdObDcD7g2",
-      "Tkqf05IzI9UTvy4BF0nWtZwbz8j2",
-      "pMbjHKjsZLWtNHi7PTc8cDJ254w2",
-      "G0qTjLBc6MeRMPziNTzIT6N32ZM2"
-    ]);
-
-    // UI helpers
-    const $ = s => document.querySelector(s);
-    function toast(msg) {
-      const t = $("#toast");
-      t.textContent = msg;
-      t.style.display = "block";
-      setTimeout(() => t.style.display = "none", 2500);
-    }
-
-    // Toggle password visibility
-    $("#togglePass").onclick = () => {
-      const inp = $("#password"), eye = $("#eye");
-      const show = inp.type === "password";
-      inp.type = show ? "text" : "password";
-      eye.textContent = show ? "visibility_off" : "visibility";
-    };
-
-    // Redirect by role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.has(uid))     return "admin.html";
-      if (KARYAWAN_UIDS.has(uid)) return "karyawan.html";
-      return null;
+    // UI only: toggle password eye
+    document.getElementById('togglePass').onclick = () => {
+      const inp = document.getElementById('password');
+      const eye = document.getElementById('eye');
+      const is = inp.type === 'password';
+      inp.type = is ? 'text' : 'password';
+      eye.textContent = is ? 'visibility_off' : 'visibility';
     }
 
     // Login handler
-    $("#loginBtn").onclick = async () => {
-      const email = $("#email").value.trim();
-      const pass  = $("#password").value.trim();
-      if (!email || !pass) return toast("Isi email dan kata sandi.");
-      const btn     = $("#loginBtn");
-      const txt     = $("#loginText");
-      const spinner = $("#loginSpinner");
-      const success = $("#successMessage");
-
-      btn.disabled = true;
-      txt.textContent = "Memeriksa...";
-      spinner.style.display = "inline-block";
-      success.style.display = "none";
-
+    document.getElementById('loginBtn').onclick = async () => {
+      const email = document.getElementById('email').value.trim();
+      const pass = document.getElementById('password').value.trim();
+      const loginBtn = document.getElementById('loginBtn');
+      const loginText = document.getElementById('loginText');
+      const loginSpinner = document.getElementById('loginSpinner');
+      const successMessage = document.getElementById('successMessage');
+      
+      if (!email || !pass) { 
+        firebaseApp.showToast("Isi email dan kata sandi.", 'error'); 
+        return; 
+      }
+      
       try {
-        const cred = await auth.signInWithEmailAndPassword(email, pass);
-        txt.textContent = "Berhasil!";
-        success.textContent = "Password benar, mengarahkan...";
-        success.style.display = "block";
-
-        const page = redirectByRole(cred.user.uid);
-        if (page) {
-          setTimeout(() => location.href = page, 1200);
-        } else {
-          throw new Error("no-role");
-        }
+        // Tampilkan loading
+        loginBtn.disabled = true;
+        loginText.textContent = "Memeriksa...";
+        loginSpinner.style.display = "inline-block";
+        successMessage.style.display = "none";
+        
+        // Coba login
+        const userCredential = await firebaseApp.auth.signInWithEmailAndPassword(email, pass);
+        const user = userCredential.user;
+        
+        // Tampilkan pesan sukses
+        loginText.textContent = "Berhasil!";
+        successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
+        successMessage.style.display = "block";
+        
+        // Redirect berdasarkan role
+        firebaseApp.redirectBasedOnRole(user.uid);
       } catch (e) {
-        btn.disabled = false;
-        txt.textContent = "Masuk";
-        spinner.style.display = "none";
-        success.style.display = "none";
-
-        if (["auth/wrong-password","auth/user-not-found"].includes(e.code)) {
-          toast("Email atau kata sandi salah.");
+        console.error("Login error:", e);
+        loginBtn.disabled = false;
+        loginText.textContent = "Masuk";
+        loginSpinner.style.display = "none";
+        successMessage.style.display = "none";
+        
+        if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+          firebaseApp.showToast("Email atau kata sandi salah.", 'error');
         } else {
-          toast("Akses ditolak atau jaringan bermasalah.");
+          firebaseApp.showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
         }
       }
     };
 
-    // Enter key submits
-    $("#password").addEventListener("keypress", e => {
-      if (e.key === "Enter") $("#loginBtn").click();
+    // Handle Enter key press
+    document.getElementById('password').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('loginBtn').click();
+      }
     });
-  </script>
 
-  <script>
-    // Daftarkan service worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js');
-    }
+    // Cek apakah user sudah login
+    firebaseApp.auth.onAuthStateChanged((user) => {
+      if (user) {
+        // User sudah login, redirect berdasarkan role
+        firebaseApp.redirectBasedOnRole(user.uid);
+      }
+    });
   </script>
 </body>
 </html>
