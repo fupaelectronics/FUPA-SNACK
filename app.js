@@ -1,201 +1,191 @@
-// Konstanta dan variabel global
-const CLOUDINARY_CLOUD_NAME = "da7idhh4f";
-const CLOUDINARY_UPLOAD_PRESET = "FupaSnack";
+// Konfigurasi Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+  authDomain: "fupa-snack.firebaseapp.com",
+  projectId: "fupa-snack",
+  storageBucket: "fupa-snack.firebasestorage.app",
+  messagingSenderId: "972524876738",
+  appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+};
 
-// Format waktu Indonesia
-function formatWaktu(tanggal) {
-  const options = { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
+// Inisialisasi Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// UID untuk admin dan karyawan
+const ADMIN_UIDS = ["O1SJ7hYop3UJjDcsA3JqT29aapI3", "uB2XsyM6fXUj493cRlHCqpe2fxH3"];
+const KARYAWAN_UIDS = [
+  "7NJ9xoMgQlUbi68CMQWFN5bYvF62", "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", 
+  "vB3i5h6offMxQslKf2U0J1ElpWS2", "tIGmvfnqtxf5QJlfPUy9O1uzHJ73",
+  "zl7xjZaI6BdCLT7Z2WA34oTcFV42", "NainrtLo3BWRSJKImgIBYNLJEIv2",
+  "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", "dDq2zTPs12Tn2v0Zh4IdObDcD7g2",
+  "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", "pMbjHKjsZLWtNHi7PTc8cDJ254w2",
+  "G0qTjLBc6MeRMPziNTzIT6N32ZM2"
+];
+
+// Fungsi utilitas
+const $ = (sel) => document.querySelector(sel);
+const toast = (msg, type = 'info') => {
+  const t = $("#toast");
+  if (!t) return alert(msg);
+  
+  const colors = {
+    success: '#2e7d32',
+    error: '#c62828',
+    warning: '#f9a825',
+    info: '#111'
   };
-  return tanggal.toLocaleDateString('id-ID', options);
+  
+  t.style.backgroundColor = colors[type] || colors.info;
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 3000);
+};
+
+// Fungsi untuk mendapatkan waktu Indonesia
+function getWIBDate() {
+  return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
 }
 
-// Kompres gambar ke 10KB
-async function kompresGambar(file) {
+// Fungsi untuk memeriksa status presensi
+function checkPresensiStatus(waktuSekarang, aturanWaktu) {
+  const jam = waktuSekarang.getHours();
+  const menit = waktuSekarang.getMinutes();
+  const totalMenit = jam * 60 + menit;
+  
+  const berangkatAwal = aturanWaktu.berangkatAwal;
+  const berangkatAkhir = aturanWaktu.berangkatAkhir;
+  const pulangAwal = aturanWaktu.pulangAwal;
+  const pulangAkhir = aturanWaktu.pulangAkhir;
+  const toleransi = aturanWaktu.toleransi || 20;
+  
+  // Cek jika hari libur
+  const hari = waktuSekarang.getDay();
+  if (aturanWaktu.hariLibur.includes(hari)) {
+    return { status: "Libur", dapatPresensi: false };
+  }
+  
+  // Cek sesi berangkat
+  if (totalMenit >= berangkatAwal && totalMenit <= berangkatAkhir + toleransi) {
+    if (totalMenit > berangkatAkhir) {
+      return { status: "Terlambat", dapatPresensi: true, jenis: "berangkat" };
+    }
+    return { status: "Tepat Waktu", dapatPresensi: true, jenis: "berangkat" };
+  }
+  
+  // Cek sesi pulang
+  if (totalMenit >= pulangAwal && totalMenit <= pulangAkhir + toleransi) {
+    if (totalMenit > pulangAkhir) {
+      return { status: "Terlambat", dapatPresensi: true, jenis: "pulang" };
+    }
+    return { status: "Tepat Waktu", dapatPresensi: true, jenis: "pulang" };
+  }
+  
+  return { status: "Diluar Sesi Presensi", dapatPresensi: false };
+}
+
+// Fungsi untuk mengompres gambar (menggunakan Canvas API)
+function compressImage(file, maxSizeKB = 10) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
+    reader.onload = (e) => {
       const img = new Image();
-      img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Hitung ukuran baru dengan tetap mempertahankan aspect ratio
+        // Hitung dimensi baru dengan menjaga aspect ratio
         let width = img.width;
         let height = img.height;
-        const maxSize = 800; // Max dimension
+        const maxDimension = 800;
         
         if (width > height) {
-          if (width > maxSize) {
-            height *= maxSize / width;
-            width = maxSize;
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
           }
         } else {
-          if (height > maxSize) {
-            width *= maxSize / height;
-            height = maxSize;
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
           }
         }
         
         canvas.width = width;
         canvas.height = height;
-        
-        // Gambar ulang gambar dengan kualitas lebih rendah
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Konversi ke blob dengan kualitas 0.6 (bisa disesuaikan)
-        canvas.toBlob((blob) => {
-          // Jika masih lebih besar dari 10KB, kurangi kualitas
-          if (blob.size > 10 * 1024) {
-            canvas.toBlob(
-              (compressedBlob) => resolve(compressedBlob),
-              'image/jpeg',
-              0.5
-            );
+        // Kompres ke JPEG dengan kualitas menyesuaikan untuk mencapai ~10KB
+        let quality = 0.9;
+        let compressedDataURL;
+        
+        // Coba beberapa tingkat kualitas sampai ukuran sesuai
+        const tryCompress = () => {
+          compressedDataURL = canvas.toDataURL('image/jpeg', quality);
+          const sizeKB = Math.floor((compressedDataURL.length * 3) / 4 / 1024);
+          
+          if (sizeKB > maxSizeKB && quality > 0.1) {
+            quality -= 0.1;
+            tryCompress();
           } else {
-            resolve(blob);
+            resolve(compressedDataURL);
           }
-        }, 'image/jpeg', 0.6);
+        };
+        
+        tryCompress();
       };
+      img.onerror = reject;
+      img.src = e.target.result;
     };
-    reader.onerror = error => reject(error);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
 
-// Upload gambar ke Cloudinary
-async function uploadKeCloudinary(blob) {
-  const formData = new FormData();
-  formData.append('file', blob);
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  formData.append('cloud_name', CLOUDINARY_CLOUD_NAME);
-  
-  try {
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+// Fungsi untuk mengupload gambar ke Cloudinary
+async function uploadToCloudinary(imageData, folder = "FupaSnack") {
+  return new Promise((resolve, reject) => {
+    const uploadPreset = "FupaSnack";
+    const cloudName = "da7idhh4f";
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+    
+    const formData = new FormData();
+    formData.append('file', imageData);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+    
+    fetch(url, {
       method: 'POST',
       body: formData
-    });
-    
-    const data = await response.json();
-    return data.secure_url;
-  } catch (error) {
-    console.error('Error uploading image:', error);
-    throw new Error('Gagal mengupload gambar');
-  }
-}
-
-// Deteksi lokasi pengguna
-function dapatkanLokasi() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation tidak didukung'));
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      },
-      (error) => {
-        reject(error);
-      },
-      { timeout: 10000 }
-    );
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.secure_url) {
+        resolve(data.secure_url);
+      } else {
+        reject(new Error('Upload failed'));
+      }
+    })
+    .catch(error => reject(error));
   });
 }
 
-// Validasi waktu presensi
-function validasiWaktuPresensi(jenis) {
-  const sekarang = new Date();
-  const jam = sekarang.getHours();
-  const menit = sekarang.getMinutes();
-  const totalMenit = jam * 60 + menit;
-  
-  // Aturan default
-  const berangkatAwal = 5 * 60 + 30; // 05:30
-  const berangkatAkhir = 6 * 60;     // 06:00
-  const pulangAwal = 10 * 60;        // 10:00
-  const pulangAkhir = 11 * 60;       // 11:00
-  const toleransi = 20;              // 20 menit
-  
-  if (jenis === 'berangkat') {
-    if (totalMenit >= berangkatAwal && totalMenit <= berangkatAkhir) {
-      return { status: 'tepat_waktu', waktu: sekarang };
-    } else if (totalMenit > berangkatAkhir && totalMenit <= berangkatAkhir + toleransi) {
-      return { status: 'terlambat', waktu: sekarang };
-    } else {
-      return { status: 'diluar_sesi', waktu: sekarang };
-    }
-  } else if (jenis === 'pulang') {
-    if (totalMenit >= pulangAwal && totalMenit <= pulangAkhir) {
-      return { status: 'tepat_waktu', waktu: sekarang };
-    } else if (totalMenit > pulangAkhir && totalMenit <= pulangAkhir + toleransi) {
-      return { status: 'terlambat', waktu: sekarang };
-    } else {
-      return { status: 'diluar_sesi', waktu: sekarang };
-    }
-  }
-  
-  return { status: 'invalid', waktu: sekarang };
+// Fungsi untuk mendapatkan aturan waktu default
+function getDefaultTimeRules() {
+  return {
+    berangkatAwal: 5 * 60 + 30, // 05:30 dalam menit
+    berangkatAkhir: 6 * 60,     // 06:00 dalam menit
+    pulangAwal: 10 * 60,        // 10:00 dalam menit
+    pulangAkhir: 11 * 60,       // 11:00 dalam menit
+    toleransi: 20,              // 20 menit
+    hariLibur: [0]              // 0 = Minggu
+  };
 }
 
-// Format data untuk CSV
-function formatDataUntukCSV(data) {
-  // Implementasi format STDR
-  // Urutkan berdasarkan nama karyawan (A-Z)
-  data.sort((a, b) => a.nama.localeCompare(b.nama));
-  
-  let csvContent = "Nama,Tanggal,Jam,Jenis,Status,Koordinat\n";
-  
-  // Kelompokkan berdasarkan nama
-  const groupedData = {};
-  data.forEach(item => {
-    if (!groupedData[item.nama]) {
-      groupedData[item.nama] = [];
-    }
-    groupedData[item.nama].push(item);
-  });
-  
-  // Urutkan setiap kelompok berdasarkan tanggal dan waktu
-  for (const nama in groupedData) {
-    groupedData[nama].sort((a, b) => {
-      const dateA = new Date(a.tanggal + ' ' + a.jam);
-      const dateB = new Date(b.tanggal + ' ' + b.jam);
-      return dateA - dateB;
-    });
-    
-    // Tambahkan data ke CSV
-    groupedData[nama].forEach(item => {
-      csvContent += `"${item.nama}","${item.tanggal}","${item.jam}","${item.jenis}","${item.status}","${item.koordinat}"\n`;
-    });
-    
-    // Tambahkan baris kosong antar blok karyawan
-    csvContent += "\n";
-  }
-  
-  return csvContent;
-}
-
-// Download CSV
-function downloadCSV(csvContent, filename) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+// Fungsi untuk memformat waktu
+function formatTime(minutes) {
+  const jam = Math.floor(minutes / 60);
+  const menit = minutes % 60;
+  return `${jam.toString().padStart(2, '0')}:${menit.toString().padStart(2, '0')}`;
 }
