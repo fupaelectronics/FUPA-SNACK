@@ -1,4 +1,4 @@
-// Konfigurasi Firebase
+// Inisialisasi Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
   authDomain: "fupa-snack.firebaseapp.com",
@@ -12,7 +12,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 // UID Admin dan Karyawan
 const ADMIN_UIDS = [
@@ -69,18 +68,73 @@ const formatTanggal = (timestamp) => {
   return date.toLocaleDateString('id-ID', options);
 };
 
-// Format tanggal singkat
-const formatTanggalSingkat = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = timestamp.toDate();
-  return date.toLocaleDateString('id-ID');
-};
-
-// Format jam
-const formatJam = (timestamp) => {
+// Format waktu saja
+const formatWaktu = (timestamp) => {
   if (!timestamp) return '-';
   const date = timestamp.toDate();
   return date.toLocaleTimeString('id-ID');
+};
+
+// Deteksi status presensi berdasarkan waktu
+const getStatusPresensi = (jenis, waktu) => {
+  if (!waktu) return { status: 'Tidak Valid', kelas: 's-bad' };
+  
+  const now = waktu.toDate();
+  const hari = now.getDay(); // 0 = Minggu, 1 = Senin, dst
+  const jam = now.getHours();
+  const menit = now.getMinutes();
+  
+  // Hari Minggu libur
+  if (hari === 0) {
+    return { status: 'Libur', kelas: 's-bad' };
+  }
+  
+  // Shift pagi: berangkat 05.30–06.00, pulang 10.00–11.00
+  // Shift sore: berangkat 14.00-14.30, pulang 17.30-18.00
+  if (jenis === 'berangkat') {
+    // Cek shift pagi
+    if ((jam === 5 && menit >= 30) || (jam === 6 && menit <= 0)) {
+      return { status: 'Tepat Waktu', kelas: 's-good' };
+    } 
+    // Cek shift sore
+    else if ((jam === 14 && menit >= 0 && menit <= 30) || (jam === 14 && menit <= 30)) {
+      return { status: 'Tepat Waktu', kelas: 's-good' };
+    }
+    // Terlambat (≤ 20 menit)
+    else if (
+      (jam === 6 && menit <= 20) || // shift pagi
+      (jam === 14 && menit <= 50)   // shift sore
+    ) {
+      return { status: 'Terlambat', kelas: 's-warn' };
+    }
+    // Di luar sesi
+    else {
+      return { status: 'Di Luar Sesi', kelas: 's-bad' };
+    }
+  } 
+  else if (jenis === 'pulang') {
+    // Cek shift pagi
+    if ((jam === 10 && menit >= 0) || (jam === 11 && menit <= 0)) {
+      return { status: 'Tepat Waktu', kelas: 's-good' };
+    } 
+    // Cek shift sore
+    else if ((jam === 17 && menit >= 30) || (jam === 18 && menit <= 0)) {
+      return { status: 'Tepat Waktu', kelas: 's-good' };
+    }
+    // Terlambat (≤ 20 menit)
+    else if (
+      (jam === 11 && menit <= 20) || // shift pagi
+      (jam === 18 && menit <= 20)    // shift sore
+    ) {
+      return { status: 'Terlambat', kelas: 's-warn' };
+    }
+    // Di luar sesi
+    else {
+      return { status: 'Di Luar Sesi', kelas: 's-bad' };
+    }
+  }
+  
+  return { status: 'Tidak Valid', kelas: 's-bad' };
 };
 
 // Kompres gambar sebelum upload ke Cloudinary
@@ -116,16 +170,20 @@ const kompresGambar = (file, maxSizeKB = 10) => {
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Kompres dengan kualitas yang disesuaikan untuk mencapai ~10KB
-        let quality = 0.9;
+        // Kompres dengan kualitas sesuai untuk mencapai ~10KB
+        let quality = 0.8;
         let compressedDataUrl;
         
         do {
           compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
           quality -= 0.1;
-        } while (quality > 0.1 && compressedDataUrl.length > maxSizeKB * 1024 * 1.37); // 1.37 faktor konversi base64
+        } while (quality > 0.1 && compressedDataUrl.length > maxSizeKB * 1024);
         
-        resolve(compressedDataUrl);
+        // Konversi data URL ke blob
+        fetch(compressedDataUrl)
+          .then(res => res.blob())
+          .then(blob => resolve(blob))
+          .catch(err => reject(err));
       };
     };
     reader.onerror = error => reject(error);
@@ -133,173 +191,251 @@ const kompresGambar = (file, maxSizeKB = 10) => {
 };
 
 // Upload gambar ke Cloudinary
-const uploadKeCloudinary = (dataUrl) => {
-  return new Promise((resolve, reject) => {
-    // Data Cloudinary dari pedoman
-    const cloudName = 'da7idhh4f';
-    const uploadPreset = 'FupaSnack';
-    
-    // Konversi data URL ke blob
-    fetch(dataUrl)
-      .then(res => res.blob())
-      .then(blob => {
-        const formData = new FormData();
-        formData.append('file', blob);
-        formData.append('upload_preset', uploadPreset);
-        
-        return fetch(`https://api.cloudinary.com/v1_1/${cloudName}/upload`, {
-          method: 'POST',
-          body: formData
-        });
+const uploadKeCloudinary = (file) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Kompres gambar terlebih dahulu
+      const compressedFile = await kompresGambar(file);
+      
+      const formData = new FormData();
+      formData.append('file', compressedFile);
+      formData.append('upload_preset', 'FupaSnack');
+      
+      fetch(`https://api.cloudinary.com/v1_1/da7idhh4f/image/upload`, {
+        method: 'POST',
+        body: formData
       })
       .then(response => response.json())
       .then(data => {
         if (data.secure_url) {
           resolve(data.secure_url);
         } else {
-          reject(new Error('Upload ke Cloudinary gagal'));
+          reject(new Error('Upload gagal'));
         }
       })
       .catch(error => reject(error));
+    } catch (error) {
+      reject(error);
+    }
   });
 };
 
-// Fungsi untuk mendapatkan status presensi berdasarkan waktu
-const dapatkanStatusPresensi = (waktu, jenis) => {
-  const now = waktu.toDate();
-  const hari = now.getDay(); // 0 = Minggu, 1 = Senin, ..., 6 = Sabtu
-  const jam = now.getHours();
-  const menit = now.getMinutes();
-  
-  // Hari Minggu adalah libur
-  if (hari === 0) return "Libur";
-  
-  // Tentukan status berdasarkan jenis presensi dan waktu
-  if (jenis === "berangkat") {
-    // Shift pagi: 05.30–06.00 WIB
-    const waktuTepatAwal = 5 * 60 + 30; // 05:30 dalam menit
-    const waktuTepatAkhir = 6 * 60;     // 06:00 dalam menit
-    const waktuTerlambatAkhir = 6 * 60 + 20; // 06:20 dalam menit
+// Fungsi untuk mendapatkan waktu server dari Firestore
+const getWaktuServer = async () => {
+  try {
+    const docRef = db.collection('serverTime').doc('current');
+    const doc = await docRef.get();
     
-    const totalMenit = jam * 60 + menit;
-    
-    if (totalMenit >= waktuTepatAwal && totalMenit <= waktuTepatAkhir) {
-      return "Tepat Waktu";
-    } else if (totalMenit > waktuTepatAkhir && totalMenit <= waktuTerlambatAkhir) {
-      return "Terlambat";
+    if (doc.exists) {
+      return doc.data().timestamp;
     } else {
-      return "Di luar sesi presensi";
+      // Jika belum ada, buat timestamp baru
+      const timestamp = firebase.firestore.FieldValue.serverTimestamp();
+      await docRef.set({ timestamp });
+      return timestamp;
     }
-  } else if (jenis === "pulang") {
-    // Shift pagi pulang: 10.00–11.00 WIB
-    const waktuTepatAwal = 10 * 60;     // 10:00 dalam menit
-    const waktuTepatAkhir = 11 * 60;    // 11:00 dalam menit
-    const waktuTerlambatAkhir = 11 * 60 + 20; // 11:20 dalam menit
-    
-    const totalMenit = jam * 60 + menit;
-    
-    if (totalMenit >= waktuTepatAwal && totalMenit <= waktuTepatAkhir) {
-      return "Tepat Waktu";
-    } else if (totalMenit > waktuTepatAkhir && totalMenit <= waktuTerlambatAkhir) {
-      return "Terlambat";
-    } else {
-      return "Di luar sesi presensi";
-    }
-  }
-  
-  return "Tidak Valid";
-};
-
-// Fungsi untuk mengecek apakah hari ini adalah waktu presensi
-const cekWaktuPresensi = () => {
-  const now = new Date();
-  const hari = now.getDay();
-  const jam = now.getHours();
-  const menit = now.getMinutes();
-  const totalMenit = jam * 60 + menit;
-  
-  // Hari Minggu adalah libur
-  if (hari === 0) return { status: "Libur", sesi: null };
-  
-  // Cek sesi berangkat pagi: 05.30–06.20 WIB
-  const berangkatAwal = 5 * 60 + 30; // 05:30
-  const berangkatAkhir = 6 * 60 + 20; // 06:20
-  
-  // Cek sesi pulang pagi: 10.00–11.20 WIB
-  const pulangAwal = 10 * 60;     // 10:00
-  const pulangAkhir = 11 * 60 + 20; // 11:20
-  
-  if (totalMenit >= berangkatAwal && totalMenit <= berangkatAkhir) {
-    return { status: "Tepat Waktu", sesi: "berangkat" };
-  } else if (totalMenit >= pulangAwal && totalMenit <= pulangAkhir) {
-    return { status: "Tepat Waktu", sesi: "pulang" };
-  } else if (totalMenit > berangkatAkhir && totalMenit < pulangAwal) {
-    return { status: "Di luar sesi presensi", sesi: null };
-  } else if (totalMenit > pulangAkhir) {
-    return { status: "Di luar sesi presensi", sesi: null };
-  } else {
-    return { status: "Belum waktu presensi", sesi: null };
+  } catch (error) {
+    console.error('Error mendapatkan waktu server:', error);
+    return firebase.firestore.Timestamp.now();
   }
 };
 
-// Fungsi untuk mengekspor data ke CSV
-const eksporKeCSV = (data, namaFile) => {
-  // Format data sesuai STDR
-  const dataTertata = [];
-  const karyawanMap = new Map();
-  
-  // Kelompokkan data berdasarkan nama karyawan
-  data.forEach(item => {
-    if (!karyawanMap.has(item.nama)) {
-      karyawanMap.set(item.nama, []);
+// Fungsi untuk memeriksa apakah sudah presensi hari ini
+const sudahPresensiHariIni = async (uid, jenis) => {
+  try {
+    const sekarang = new Date();
+    const awalHari = new Date(sekarang.getFullYear(), sekarang.getMonth(), sekarang.getDate());
+    const akhirHari = new Date(sekarang.getFullYear(), sekarang.getMonth(), sekarang.getDate() + 1);
+    
+    const querySnapshot = await db.collection('presensi')
+      .where('uid', '==', uid)
+      .where('jenis', '==', jenis)
+      .where('waktu', '>=', awalHari)
+      .where('waktu', '<=', akhirHari)
+      .get();
+      
+    return !querySnapshot.empty;
+  } catch (error) {
+    console.error('Error memeriksa presensi:', error);
+    return false;
+  }
+};
+
+// Fungsi untuk mendapatkan koordinat geolokasi
+const dapatkanKoordinat = () => {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolokasi tidak didukung'));
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        (error) => {
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
-    karyawanMap.get(item.nama).push(item);
   });
-  
-  // Urutkan nama karyawan secara alfabetis
-  const namaTerurut = Array.from(karyawanMap.keys()).sort();
-  
-  // Format data untuk setiap karyawan
-  namaTerurut.forEach(nama => {
-    const presensiKaryawan = karyawanMap.get(nama);
+};
+
+// Fungsi untuk memuat riwayat presensi
+const muatRiwayatPresensi = async (uid, limit = 20) => {
+  try {
+    let query = db.collection('presensi')
+      .orderBy('waktu', 'desc');
     
-    // Urutkan presensi berdasarkan tanggal
-    presensiKaryawan.sort((a, b) => a.waktu.seconds - b.waktu.seconds);
+    // Jika bukan admin, filter berdasarkan UID
+    if (uid && !ADMIN_UIDS.includes(uid)) {
+      query = query.where('uid', '==', uid);
+    }
     
-    // Tambahkan ke data tertata
-    presensiKaryawan.forEach(item => {
-      dataTertata.push({
-        Nama: item.nama,
-        Tanggal: formatTanggalSingkat(item.waktu),
-        Jam: formatJam(item.waktu),
-        Jenis: item.jenis === 'berangkat' ? 'Berangkat' : 'Pulang',
-        Status: item.status,
-        Koordinat: item.koordinat || '-',
-        'URL Selfie': item.selfie || '-'
+    // Terapkan limit jika bukan "all"
+    if (limit !== 'all') {
+      query = query.limit(parseInt(limit));
+    }
+    
+    const snapshot = await query.get();
+    const riwayat = [];
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      riwayat.push({
+        id: doc.id,
+        ...data,
+        statusObj: getStatusPresensi(data.jenis, data.waktu)
       });
     });
     
-    // Tambahkan baris kosong antar karyawan
-    dataTertata.push({});
+    return riwayat;
+  } catch (error) {
+    console.error('Error memuat riwayat presensi:', error);
+    return [];
+  }
+};
+
+// Fungsi untuk memuat notifikasi
+const muatNotifikasi = async (uid, role) => {
+  try {
+    let query = db.collection('notifikasi')
+      .orderBy('waktu', 'desc')
+      .limit(20);
+    
+    // Admin melihat notifikasi untuk admin
+    if (role === 'admin') {
+      query = query.where('targetRole', '==', 'admin');
+    } 
+    // Karyawan melihat notifikasi untuk UID mereka
+    else {
+      query = query.where('targetUID', '==', uid);
+    }
+    
+    const snapshot = await query.get();
+    const notifikasi = [];
+    
+    snapshot.forEach(doc => {
+      notifikasi.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return notifikasi;
+  } catch (error) {
+    console.error('Error memuat notifikasi:', error);
+    return [];
+  }
+};
+
+// Fungsi untuk membuat notifikasi
+const buatNotifikasi = (data) => {
+  return db.collection('notifikasi').add({
+    ...data,
+    waktu: firebase.firestore.FieldValue.serverTimestamp(),
+    dibaca: false
+  });
+};
+
+// Fungsi untuk menandai notifikasi sebagai telah dibaca
+const tandaiNotifikasiDibaca = (notifId) => {
+  return db.collection('notifikasi').doc(notifId).update({
+    dibaca: true
+  });
+};
+
+// Fungsi untuk menghapus notifikasi
+const hapusNotifikasi = (notifId) => {
+  return db.collection('notifikasi').doc(notifId).delete();
+};
+
+// Fungsi untuk mengajukan cuti
+const ajukanCuti = (data) => {
+  return db.collection('cuti').add({
+    ...data,
+    status: 'pending',
+    waktuAjukan: firebase.firestore.FieldValue.serverTimestamp()
+  });
+};
+
+// Fungsi untuk memproses cuti (admin)
+const prosesCuti = (cutiId, status, adminUid) => {
+  return db.collection('cuti').doc(cutiId).update({
+    status,
+    waktuProses: firebase.firestore.FieldValue.serverTimestamp(),
+    adminUid
+  });
+};
+
+// Fungsi untuk membuat entri presensi dari cuti
+const buatEntriDariCuti = (cutiData) => {
+  return db.collection('presensi').add({
+    uid: cutiData.uid,
+    nama: cutiData.nama,
+    jenis: 'cuti',
+    status: cutiData.jenis,
+    waktu: cutiData.tanggal, // tanggal cuti yang dipilih
+    koordinat: { lat: 0, lng: 0 },
+    selfie: '',
+    dariCuti: true
+  });
+};
+
+// Fungsi untuk ekspor data ke CSV
+const eksporKeCSV = (data, filename) => {
+  // Format data sesuai STDR
+  const formattedData = formatDataSTDR(data);
+  
+  // Buat header CSV
+  const headers = ['Nama', 'Tanggal', 'Jam', 'Jenis', 'Status', 'Koordinat'];
+  let csv = headers.join(',') + '\n';
+  
+  // Tambahkan data
+  formattedData.forEach(blok => {
+    blok.entries.forEach(entry => {
+      const row = [
+        `"${blok.nama}"`,
+        `"${entry.tanggal}"`,
+        `"${entry.jam}"`,
+        `"${entry.jenis}"`,
+        `"${entry.status}"`,
+        `"${entry.koordinat}"`
+      ];
+      csv += row.join(',') + '\n';
+    });
+    csv += '\n'; // Baris kosong antar blok
   });
   
-  // Konversi ke CSV
-  const header = Object.keys(dataTertata[0]).join(',');
-  const rows = dataTertata.map(item => 
-    Object.values(item).map(value => 
-      typeof value === 'string' && value.includes(',') ? `"${value}"` : value
-    ).join(',')
-  );
-  
-  const csvContent = [header, ...rows].join('\n');
-  
-  // Buat blob dan unduh
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Buat file dan unduh
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
   
   link.setAttribute('href', url);
-  link.setAttribute('download', `${namaFile}_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', filename);
   link.style.visibility = 'hidden';
   
   document.body.appendChild(link);
@@ -307,350 +443,267 @@ const eksporKeCSV = (data, namaFile) => {
   document.body.removeChild(link);
 };
 
-// Fungsi untuk memuat data user
-const muatDataUser = async (uid) => {
-  try {
-    const userDoc = await db.collection('users').doc(uid).get();
-    if (userDoc.exists) {
-      return userDoc.data();
-    } else {
-      // Buat dokumen user baru jika tidak ada
-      const userData = {
-        nama: '',
-        alamat: '',
-        foto: `https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=ffb300,ffd54f&radius=20`,
-        role: ADMIN_UIDS.includes(uid) ? 'admin' : 'karyawan',
-        dibuat: firebase.firestore.FieldValue.serverTimestamp(),
-        diupdate: firebase.firestore.FieldValue.serverTimestamp()
-      };
-      
-      await db.collection('users').doc(uid).set(userData);
-      return userData;
+// Format data sesuai STDR (Standar)
+const formatDataSTDR = (data) => {
+  // Kelompokkan data berdasarkan nama karyawan
+  const groupedByNama = {};
+  
+  data.forEach(item => {
+    if (!groupedByNama[item.nama]) {
+      groupedByNama[item.nama] = [];
     }
-  } catch (error) {
-    console.error('Error memuat data user:', error);
-    showToast('Gagal memuat data profil', 'error');
-    return null;
-  }
-};
-
-// Fungsi untuk memperbarui data user
-const perbaruiDataUser = async (uid, data) => {
-  try {
-    await db.collection('users').doc(uid).update({
-      ...data,
-      diupdate: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    return true;
-  } catch (error) {
-    console.error('Error memperbarui data user:', error);
-    showToast('Gagal menyimpan profil', 'error');
-    return false;
-  }
-};
-
-// Fungsi untuk memuat riwayat presensi
-const muatRiwayatPresensi = async (uid, filter = { limit: 20 }) => {
-  try {
-    let query = db.collection('presensi');
-    
-    // Jika bukan admin, filter berdasarkan UID
-    const userData = await muatDataUser(uid);
-    if (userData.role !== 'admin') {
-      query = query.where('uid', '==', uid);
-    }
-    
-    // Terapkan filter lainnya
-    if (filter.nama) {
-      query = query.where('nama', '==', filter.nama);
-    }
-    
-    if (filter.periode && filter.periode !== 'harian') {
-      const now = new Date();
-      let startDate;
-      
-      switch (filter.periode) {
-        case 'mingguan':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-          break;
-        case 'bulanan':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-          break;
-        case 'tahunan':
-          startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-          break;
-        case 'custom':
-          if (filter.dari && filter.sampai) {
-            startDate = new Date(filter.dari);
-            const endDate = new Date(filter.sampai);
-            query = query.where('waktu', '>=', startDate)
-                         .where('waktu', '<=', endDate);
-          }
-          break;
-      }
-      
-      if (filter.periode !== 'custom' && startDate) {
-        query = query.where('waktu', '>=', startDate);
-      }
-    }
-    
-    // Urutkan berdasarkan waktu terbaru dan batasi hasil
-    query = query.orderBy('waktu', 'desc');
-    
-    if (filter.limit && filter.limit !== 'all') {
-      query = query.limit(parseInt(filter.limit));
-    }
-    
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (error) {
-    console.error('Error memuat riwayat presensi:', error);
-    showToast('Gagal memuat riwayat presensi', 'error');
-    return [];
-  }
-};
-
-// Fungsi untuk memuat notifikasi
-const muatNotifikasi = async (uid) => {
-  try {
-    const userData = await muatDataUser(uid);
-    let query = db.collection('notifikasi');
-    
-    if (userData.role === 'admin') {
-      // Admin melihat semua notifikasi cuti
-      query = query.where('tipe', '==', 'cuti');
-    } else {
-      // Karyawan melihat notifikasi untuk UID mereka atau untuk semua
-      query = query.where('targetUID', 'in', [uid, 'all']);
-    }
-    
-    query = query.orderBy('waktu', 'desc').limit(50);
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (error) {
-    console.error('Error memuat notifikasi:', error);
-    showToast('Gagal memuat notifikasi', 'error');
-    return [];
-  }
-};
-
-// Fungsi untuk membuat notifikasi
-const buatNotifikasi = async (data) => {
-  try {
-    await db.collection('notifikasi').add({
-      ...data,
-      waktu: firebase.firestore.FieldValue.serverTimestamp(),
-      dibaca: false
-    });
-    return true;
-  } catch (error) {
-    console.error('Error membuat notifikasi:', error);
-    showToast('Gagal membuat notifikasi', 'error');
-    return false;
-  }
-};
-
-// Fungsi untuk menghapus notifikasi
-const hapusNotifikasi = async (id) => {
-  try {
-    await db.collection('notifikasi').doc(id).delete();
-    return true;
-  } catch (error) {
-    console.error('Error menghapus notifikasi:', error);
-    showToast('Gagal menghapus notifikasi', 'error');
-    return false;
-  }
-};
-
-// Fungsi untuk menandai notifikasi sebagai sudah dibaca
-const tandaiNotifikasiDibaca = async (id) => {
-  try {
-    await db.collection('notifikasi').doc(id).update({
-      dibaca: true
-    });
-    return true;
-  } catch (error) {
-    console.error('Error menandai notifikasi:', error);
-    return false;
-  }
-};
-
-// Fungsi untuk membuat presensi
-const buatPresensi = async (data) => {
-  try {
-    const waktuSekarang = firebase.firestore.FieldValue.serverTimestamp();
-    const status = dapatkanStatusPresensi(waktuSekarang, data.jenis);
-    
-    await db.collection('presensi').add({
-      ...data,
-      waktu: waktuSekarang,
-      status: status
-    });
-    
-    // Buat notifikasi untuk user
-    await buatNotifikasi({
-      tipe: 'presensi',
-      targetUID: data.uid,
-      judul: 'Presensi Berhasil',
-      isi: `Presensi ${data.jenis} Anda pada ${formatTanggal(waktuSekarang)} berstatus ${status}`,
-      targetRole: 'karyawan'
-    });
-    
-    return true;
-  } catch (error) {
-    console.error('Error membuat presensi:', error);
-    showToast('Gagal membuat presensi', 'error');
-    return false;
-  }
-};
-
-// Fungsi untuk mengajukan cuti
-const ajukanCuti = async (data) => {
-  try {
-    const cutiRef = await db.collection('cuti').add({
-      ...data,
-      status: 'pending',
-      diajukan: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    // Buat notifikasi untuk admin
-    await buatNotifikasi({
-      tipe: 'cuti',
-      targetUID: 'all',
-      targetRole: 'admin',
-      judul: 'Pengajuan Cuti',
-      isi: `${data.nama} mengajukan cuti ${data.jenis} pada ${formatTanggalSingkat(data.tanggal)}`,
-      data: { cutiId: cutiRef.id, uid: data.uid }
-    });
-    
-    return true;
-  } catch (error) {
-    console.error('Error mengajukan cuti:', error);
-    showToast('Gagal mengajukan cuti', 'error');
-    return false;
-  }
-};
-
-// Fungsi untuk memproses cuti (approve/reject)
-const prosesCuti = async (cutiId, status, adminUid, adminNama) => {
-  try {
-    const cutiDoc = await db.collection('cuti').doc(cutiId).get();
-    if (!cutiDoc.exists) {
-      showToast('Data cuti tidak ditemukan', 'error');
-      return false;
-    }
-    
-    const cutiData = cutiDoc.data();
-    
-    // Update status cuti
-    await db.collection('cuti').doc(cutiId).update({
-      status: status,
-      diproses: firebase.firestore.FieldValue.serverTimestamp(),
-      diprosesOleh: adminUid
-    });
-    
-    // Jika disetujui, buat entri presensi
-    if (status === 'disetujui') {
-      await db.collection('presensi').add({
-        uid: cutiData.uid,
-        nama: cutiData.nama,
-        jenis: 'cuti',
-        status: cutiData.jenis,
-        waktu: cutiData.tanggal,
-        koordinat: '-',
-        selfie: '-',
-        catatan: cutiData.catatan || ''
+    groupedByNama[item.nama].push(item);
+  });
+  
+  // Urutkan nama A-Z
+  const sortedNames = Object.keys(groupedByNama).sort();
+  
+  // Format setiap blok
+  const result = [];
+  
+  sortedNames.forEach(nama => {
+    // Urutkan entri berdasarkan tanggal
+    const entries = groupedByNama[nama]
+      .sort((a, b) => a.waktu - b.waktu)
+      .map(entry => {
+        const date = entry.waktu.toDate();
+        return {
+          tanggal: date.toLocaleDateString('id-ID'),
+          jam: date.toLocaleTimeString('id-ID'),
+          jenis: entry.jenis,
+          status: entry.statusObj.status,
+          koordinat: `${entry.koordinat.lat}, ${entry.koordinat.lng}`
+        };
       });
-    }
     
-    // Buat notifikasi untuk karyawan
-    await buatNotifikasi({
-      tipe: 'hasil_cuti',
-      targetUID: cutiData.uid,
-      judul: 'Hasil Pengajuan Cuti',
-      isi: `Pengajuan cuti ${cutiData.jenis} Anda pada ${formatTanggalSingkat(cutiData.tanggal)} telah ${status === 'disetujui' ? 'disetujui' : 'ditolak'} oleh ${adminNama}`,
-      targetRole: 'karyawan'
+    result.push({
+      nama,
+      entries
     });
-    
-    return true;
-  } catch (error) {
-    console.error('Error memproses cuti:', error);
-    showToast('Gagal memproses cuti', 'error');
-    return false;
-  }
+  });
+  
+  return result;
 };
 
-// Fungsi untuk mendapatkan daftar semua karyawan
+// Fungsi untuk memuat daftar karyawan (admin)
 const muatDaftarKaryawan = async () => {
   try {
     const snapshot = await db.collection('users')
       .where('role', '==', 'karyawan')
-      .orderBy('nama')
       .get();
     
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const karyawan = [];
+    snapshot.forEach(doc => {
+      karyawan.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return karyawan;
   } catch (error) {
     console.error('Error memuat daftar karyawan:', error);
-    showToast('Gagal memuat daftar karyawan', 'error');
     return [];
   }
 };
 
-// Fungsi untuk membuat user baru (hanya admin)
-const buatUserBaru = async (email, password, data) => {
+// Fungsi untuk membuat akun karyawan baru (admin)
+const buatAkunKaryawan = async (email, password, data) => {
   try {
     // Buat user di Firebase Auth
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-    const uid = userCredential.user.uid;
+    const user = userCredential.user;
     
-    // Simpan data user di Firestore
-    await db.collection('users').doc(uid).set({
-      ...data,
+    // Simpan data tambahan di Firestore
+    await db.collection('users').doc(user.uid).set({
+      email,
+      nama: data.nama,
+      alamat: data.alamat,
       role: 'karyawan',
-      dibuat: firebase.firestore.FieldValue.serverTimestamp(),
-      diupdate: firebase.firestore.FieldValue.serverTimestamp()
+      fotoProfil: data.fotoProfil || '',
+      dibuatPada: firebase.firestore.FieldValue.serverTimestamp()
     });
     
-    return true;
+    return user;
   } catch (error) {
-    console.error('Error membuat user baru:', error);
-    showToast('Gagal membuat user baru', 'error');
-    return false;
+    console.error('Error membuat akun karyawan:', error);
+    throw error;
   }
 };
 
-// Event listener untuk auth state changes
-auth.onAuthStateChanged(async (user) => {
-  if (user) {
-    // User sudah login, muat data user
-    const userData = await muatDataUser(user.uid);
-    
-    if (userData) {
-      // Jika nama atau alamat kosong, tampilkan popup
-      if ((!userData.nama || !userData.alamat) && window.showProfileModal) {
-        window.showProfileModal();
-      }
-      
-      // Update UI dengan data user
-      if (window.updateUserProfile) {
-        window.updateUserProfile(userData);
-      }
-      
-      // Muat notifikasi
-      if (window.loadNotifications) {
-        window.loadNotifications();
-      }
-      
-      // Muat riwayat presensi
-      if (window.loadPresenceHistory) {
-        window.loadPresenceHistory();
-      }
-    }
-  } else {
-    // User belum login, redirect ke index.html
-    if (window.location.pathname !== '/index.html' && 
-        !window.location.pathname.endsWith('/')) {
-      window.location.href = 'index.html';
-    }
+// Fungsi untuk update profil pengguna
+const updateProfil = async (uid, data) => {
+  try {
+    await db.collection('users').doc(uid).update(data);
+    return true;
+  } catch (error) {
+    console.error('Error update profil:', error);
+    throw error;
   }
+};
+
+// Fungsi untuk upload foto profil ke Cloudinary
+const uploadFotoProfil = async (file, uid) => {
+  try {
+    const url = await uploadKeCloudinary(file);
+    await db.collection('users').doc(uid).update({
+      fotoProfil: url
+    });
+    return url;
+  } catch (error) {
+    console.error('Error upload foto profil:', error);
+    throw error;
+  }
+};
+
+// Inisialisasi kamera
+const initKamera = async (videoElement, canvasElement) => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }, 
+      audio: false 
+    });
+    
+    videoElement.srcObject = stream;
+    
+    return {
+      stream,
+      ambilFoto: () => {
+        const context = canvasElement.getContext('2d');
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+        
+        return new Promise((resolve) => {
+          canvasElement.toBlob(resolve, 'image/jpeg', 0.8);
+        });
+      },
+      stop: () => {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  } catch (error) {
+    console.error('Error mengakses kamera:', error);
+    throw error;
+  }
+};
+
+// Fungsi untuk memeriksa dan menampilkan dialog install PWA
+const initPWA = () => {
+  let deferredPrompt;
+  const installBtn = document.getElementById('installBtn');
+  
+  if (!installBtn) return;
+  
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+    
+    installBtn.addEventListener('click', () => {
+      installBtn.style.display = 'none';
+      deferredPrompt.prompt();
+      
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User menerima install');
+        } else {
+          console.log('User menolak install');
+        }
+        deferredPrompt = null;
+      });
+    });
+  });
+};
+
+// Fungsi untuk logout
+const logout = () => {
+  auth.signOut().then(() => {
+    window.location.href = 'index.html';
+  }).catch(error => {
+    console.error('Error logout:', error);
+    showToast('Gagal logout', 'error');
+  });
+};
+
+// Inisialisasi umum untuk semua halaman
+document.addEventListener('DOMContentLoaded', function() {
+  // Inisialisasi PWA
+  initPWA();
+  
+  // Cek status auth
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      // Jika tidak login, redirect ke index.html
+      if (!window.location.pathname.endsWith('index.html')) {
+        window.location.href = 'index.html';
+      }
+      return;
+    }
+    
+    // Jika sudah login, pastikan di halaman yang sesuai
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      const role = userData.role;
+      
+      // Redirect ke halaman yang sesuai berdasarkan role
+      if (role === 'admin' && !window.location.pathname.endsWith('admin.html')) {
+        window.location.href = 'admin.html';
+      } else if (role === 'karyawan' && !window.location.pathname.endsWith('karyawan.html')) {
+        window.location.href = 'karyawan.html';
+      }
+      
+      // Jika data user baru kosong, tampilkan popup
+      if ((!userData.nama || !userData.alamat) && !sessionStorage.getItem('profileUpdated')) {
+        tampilkanPopupUpdateProfil(user.uid);
+      }
+    }
+  });
 });
+
+// Tampilkan popup update profil jika data belum lengkap
+const tampilkanPopupUpdateProfil = (uid) => {
+  // Implementasi popup update profil
+  const popup = document.createElement('div');
+  popup.innerHTML = `
+    <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:1000;">
+      <div style="background:white; padding:20px; border-radius:10px; width:90%; max-width:400px;">
+        <h3>Lengkapi Profil Anda</h3>
+        <p>Silakan lengkapi data profil Anda sebelum menggunakan aplikasi.</p>
+        <div style="margin-bottom:10px;">
+          <input type="text" id="popupNama" placeholder="Nama lengkap" style="width:100%; padding:8px; margin-bottom:10px;">
+          <input type="text" id="popupAlamat" placeholder="Alamat" style="width:100%; padding:8px;">
+        </div>
+        <button id="simpanProfilBtn" style="background:#FFB300; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Simpan</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(popup);
+  
+  document.getElementById('simpanProfilBtn').addEventListener('click', async () => {
+    const nama = document.getElementById('popupNama').value;
+    const alamat = document.getElementById('popupAlamat').value;
+    
+    if (!nama || !alamat) {
+      showToast('Harap isi semua field', 'error');
+      return;
+    }
+    
+    try {
+      await updateProfil(uid, { nama, alamat });
+      sessionStorage.setItem('profileUpdated', 'true');
+      popup.remove();
+      showToast('Profil berhasil diperbarui', 'success');
+    } catch (error) {
+      console.error('Error update profil:', error);
+      showToast('Gagal update profil', 'error');
+    }
+  });
+};
