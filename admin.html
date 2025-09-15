@@ -227,7 +227,7 @@
             </thead>
             <tbody id="tableBody">
               <tr>
-                <td colspan="6" style="text-align:center">Memuat data...</td>
+                <td colspan="6" style="text-align:center;padding:20px;opacity:0.7">Memuat data presensi...</td>
               </tr>
             </tbody>
           </table>
@@ -235,13 +235,22 @@
       </section>
 
       <section class="card">
-        <h3 style="margin:0 0 8px">Pengumuman</h3>
+        <h3 style="margin:0 0 8px">Pengaturan & pengumuman</h3>
         <div class="row">
+          <div class="input">
+            <span class="material-symbols-rounded">event_busy</span>
+            <select id="wajibHari">
+              <option value="auto">Sesuai aturan: Minggu non-presensi</option>
+              <option value="forceOn">Paksa wajib presensi hari ini</option>
+              <option value="forceOff">Paksa tidak wajib presensi hari ini</option>
+            </select>
+          </div>
+          <button id="saveSchedule" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        </div>
+        <div class="row" style="margin-top:10px">
           <div class="input" style="flex:1"><span class="material-symbols-rounded">campaign</span>
             <textarea id="announceText" placeholder="Tulis pengumuman untuk karyawan" rows="3" style="width:100%"></textarea>
           </div>
-        </div>
-        <div class="row" style="margin-top:10px">
           <div class="input">
             <span class="material-symbols-rounded">person</span>
             <select id="announceTarget">
@@ -253,12 +262,17 @@
         </div>
         <div id="userSelection" style="display:none; margin-top:10px">
           <div class="user-list" id="userList">
-            Memuat daftar karyawan...
+            <div style="padding: 10px; text-align: center; opacity: 0.7;">Memuat daftar karyawan...</div>
           </div>
         </div>
       </section>
     </div>
   </div>
+
+  <!-- FAB pengumuman cepat -->
+  <button class="fab" id="timeRulesFab" title="Aturan Waktu">
+    <span class="material-symbols-rounded">schedule</span>
+  </button>
 
   <!-- Install button -->
   <button class="install-btn" id="installBtn" style="display:none">
@@ -304,8 +318,61 @@
       <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="dlg-body" id="cutiList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div class="cuti-item">
-        <div>Memuat permintaan cuti...</div>
+      <div style="padding: 20px; text-align: center; opacity: 0.7;">Memuat permintaan cuti...</div>
+    </div>
+  </dialog>
+
+  <!-- Dialog aturan waktu -->
+  <dialog id="timeRulesDlg">
+    <div class="dlg-head">
+      <div class="row"><span class="material-symbols-rounded">schedule</span><b>Aturan Waktu Kustom</b></div>
+      <button class="icon-btn" onclick="document.getElementById('timeRulesDlg').close()"><span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="dlg-body">
+      <div class="row">
+        <div class="input">
+          <span class="material-symbols-rounded">person</span>
+          <select id="rulesTarget">
+            <option value="all">Semua Karyawan</option>
+            <option value="specific">Karyawan Tertentu</option>
+          </select>
+        </div>
+      </div>
+      
+      <div id="rulesUserSelection" style="display:none; margin-top:10px">
+        <div class="user-list" id="rulesUserList">
+          <div style="padding: 10px; text-align: center; opacity: 0.7;">Memuat daftar karyawan...</div>
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top:16px">
+        <div class="input">
+          <span class="material-symbols-rounded">login</span>
+          <input id="rulesBerangkat" type="time" value="05:30" />
+        </div>
+        <div class="input">
+          <span class="material-symbols-rounded">logout</span>
+          <input id="rulesPulang" type="time" value="10:00" />
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top:10px">
+        <div class="input">
+          <span class="material-symbols-rounded">event_available</span>
+          <select id="rulesLibur" multiple style="height:100px">
+            <option value="0">Minggu</option>
+            <option value="1">Senin</option>
+            <option value="2">Selasa</option>
+            <option value="3">Rabu</option>
+            <option value="4">Kamis</option>
+            <option value="5">Jumat</option>
+            <option value="6">Sabtu</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="row" style="justify-content:flex-end; margin-top:16px">
+        <button id="saveRulesBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan Aturan</button>
       </div>
     </div>
   </dialog>
@@ -315,432 +382,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
-  <script>
-    // Variabel global untuk halaman admin
-    let presenceHistory = [];
-    let cutiRequests = [];
-    let karyawanList = [];
-    let selectedUsers = [];
-    
-    // Fungsi untuk memperbarui waktu server
-    function updateServerTime() {
-      const now = new Date();
-      const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZone: 'Asia/Jakarta'
-      };
-      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
-    }
-    
-    // Fungsi untuk memuat riwayat presensi
-    async function loadPresenceHistory() {
-      const filters = {};
-      
-      // Filter nama
-      const namaFilter = $('#fNama').value.trim();
-      if (namaFilter) {
-        filters.nama = namaFilter;
-      }
-      
-      // Filter periode
-      const period = $('#fPeriode').value;
-      if (period === 'custom') {
-        const startDate = $('#fDari').value;
-        const endDate = $('#fSampai').value;
-        
-        if (startDate && endDate) {
-          filters.startDate = startDate;
-          filters.endDate = endDate;
-        }
-      } else {
-        // Implementasi filter periode harian/mingguan/bulanan/tahunan
-        const now = new Date();
-        let startDate, endDate;
-        
-        switch (period) {
-          case 'harian':
-            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-            break;
-          case 'mingguan':
-            const day = now.getDay();
-            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-            startDate = new Date(now.setDate(diff));
-            endDate = new Date(now.setDate(diff + 6));
-            break;
-          case 'bulanan':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            break;
-          case 'tahunan':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = new Date(now.getFullYear(), 11, 31);
-            break;
-        }
-        
-        if (startDate && endDate) {
-          filters.startDate = startDate.toISOString().split('T')[0];
-          filters.endDate = endDate.toISOString().split('T')[0];
-        }
-      }
-      
-      const limit = $('#fShow').value;
-      presenceHistory = await loadPresenceHistory(limit, filters);
-      renderPresenceHistory();
-    }
-    
-    // Fungsi untuk merender riwayat presensi
-    function renderPresenceHistory() {
-      const tableBody = $('#tableBody');
-      tableBody.innerHTML = '';
-      
-      if (presenceHistory.length === 0) {
-        tableBody.innerHTML = `
-          <tr>
-            <td colspan="6" style="text-align:center">Tidak ada data presensi</td>
-          </tr>
-        `;
-        return;
-      }
-      
-      presenceHistory.forEach(presence => {
-        const date = presence.waktu.toLocaleDateString('id-ID');
-        const time = presence.waktu.toLocaleTimeString('id-ID');
-        
-        let statusClass = 's-good';
-        if (presence.status === 'Terlambat') statusClass = 's-warn';
-        if (presence.status === 'Di luar sesi presensi') statusClass = 's-bad';
-        
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${date}<br>${time}</td>
-          <td>${presence.nama}</td>
-          <td>${presence.jenis}</td>
-          <td><span class="status ${statusClass}">${presence.status}</span></td>
-          <td>${presence.koordinat ? `${presence.koordinat.lat.toFixed(4)}, ${presence.koordinat.lng.toFixed(4)}` : '-'}</td>
-          <td>${presence.selfie ? `<a href="${presence.selfie}" target="_blank">Lihat Foto</a>` : '-'}</td>
-        `;
-        
-        tableBody.appendChild(row);
-      });
-    }
-    
-    // Fungsi untuk memuat permintaan cuti
-    async function loadCutiRequests() {
-      cutiRequests = await loadNotifications();
-      renderCutiRequests();
-      
-      // Perbarui badge
-      const unreadCount = cutiRequests.filter(n => !n.read).length;
-      const badge = $('#notifBadge');
-      if (unreadCount > 0) {
-        badge.textContent = unreadCount;
-        badge.style.display = 'grid';
-      } else {
-        badge.style.display = 'none';
-      }
-    }
-    
-    // Fungsi untuk merender permintaan cuti
-    function renderCutiRequests() {
-      const cutiList = $('#cutiList');
-      cutiList.innerHTML = '';
-      
-      if (cutiRequests.length === 0) {
-        cutiList.innerHTML = `
-          <div class="cuti-item">
-            <div>Tidak ada permintaan cuti</div>
-          </div>
-        `;
-        return;
-      }
-      
-      cutiRequests.forEach(notif => {
-        if (notif.type !== 'cuti') return;
-        
-        const date = notif.createdAt.toLocaleDateString('id-ID');
-        const time = notif.createdAt.toLocaleTimeString('id-ID');
-        
-        const item = document.createElement('div');
-        item.className = 'cuti-item';
-        item.innerHTML = `
-          <div><strong>${notif.data.nama || 'Karyawan'}</strong> mengajukan cuti <strong>${notif.data.jenis}</strong></div>
-          <div>Tanggal: ${new Date(notif.data.tanggal).toLocaleDateString('id-ID')}</div>
-          <div>Keterangan: ${notif.data.keterangan || '-'}</div>
-          <div style="font-size:12px;opacity:0.7">Diajukan pada: ${date} - ${time}</div>
-          <div class="cuti-actions">
-            <button class="btn approve-btn" data-id="${notif.data.cutiId}" style="background:var(--good)">
-              <span class="material-symbols-rounded">check</span> Setujui
-            </button>
-            <button class="btn reject-btn" data-id="${notif.data.cutiId}" style="background:var(--bad)">
-              <span class="material-symbols-rounded">close</span> Tolak
-            </button>
-          </div>
-        `;
-        
-        cutiList.appendChild(item);
-      });
-      
-      // Tambahkan event listener untuk tombol setujui/tolak
-      document.querySelectorAll('.approve-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-          const cutiId = this.getAttribute('data-id');
-          const success = await processCuti(cutiId, true);
-          
-          if (success) {
-            showToast('Cuti disetujui', 'success');
-            loadCutiRequests();
-          } else {
-            showToast('Gagal menyetujui cuti', 'error');
-          }
-        });
-      });
-      
-      document.querySelectorAll('.reject-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-          const cutiId = this.getAttribute('data-id');
-          const success = await processCuti(cutiId, false);
-          
-          if (success) {
-            showToast('Cuti ditolak', 'success');
-            loadCutiRequests();
-          } else {
-            showToast('Gagal menolak cuti', 'error');
-          }
-        });
-      });
-    }
-    
-    // Fungsi untuk memuat daftar karyawan
-    async function loadKaryawanList() {
-      karyawanList = await getKaryawanList();
-      renderKaryawanList();
-    }
-    
-    // Fungsi untuk merender daftar karyawan
-    function renderKaryawanList() {
-      const userList = $('#userList');
-      userList.innerHTML = '';
-      
-      if (karyawanList.length === 0) {
-        userList.innerHTML = '<div>Tidak ada karyawan</div>';
-        return;
-      }
-      
-      karyawanList.forEach(karyawan => {
-        const item = document.createElement('div');
-        item.className = 'user-item';
-        item.textContent = `${karyawan.nama} (${karyawan.email})`;
-        item.setAttribute('data-uid', karyawan.id);
-        
-        item.addEventListener('click', function() {
-          const uid = this.getAttribute('data-uid');
-          if (selectedUsers.includes(uid)) {
-            selectedUsers = selectedUsers.filter(id => id !== uid);
-            this.classList.remove('selected');
-          } else {
-            selectedUsers.push(uid);
-            this.classList.add('selected');
-          }
-        });
-        
-        userList.appendChild(item);
-      });
-    }
-    
-    // Event listeners
-    document.addEventListener('DOMContentLoaded', function() {
-      // Inisialisasi waktu server
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-      
-      // Muat riwayat presensi
-      loadPresenceHistory();
-      
-      // Muat permintaan cuti
-      loadCutiRequests();
-      
-      // Muat daftar karyawan
-      loadKaryawanList();
-      
-      // Event listener untuk filter
-      $('#applyFilter').addEventListener('click', loadPresenceHistory);
-      
-      // Event listener untuk filter periode
-      $('#fPeriode').addEventListener('change', function() {
-        $('#customDateRange').style.display = this.value === 'custom' ? 'flex' : 'none';
-      });
-      
-      // Export CSV
-      $('#exportCsv').addEventListener('click', async () => {
-        $('#exportCsv').disabled = true;
-        $('#exportCsv').innerHTML = '<span class="spinner"></span> Mengekspor...';
-        
-        try {
-          // Dapatkan semua data presensi
-          const allPresences = await loadPresenceHistory('all');
-          
-          // Format data untuk CSV
-          const csvData = formatPresenceForCSV(allPresences);
-          
-          // Ekspor ke CSV
-          exportToCSV(csvData, `presensi-${new Date().toISOString().split('T')[0]}.csv`);
-          
-          showToast('CSV berhasil diekspor', 'success');
-        } catch (error) {
-          console.error('Error exporting CSV:', error);
-          showToast('Gagal mengekspor CSV', 'error');
-        } finally {
-          $('#exportCsv').disabled = false;
-          $('#exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-        }
-      });
-      
-      // Profile dialog
-      $('#profileBtn').addEventListener('click', () => {
-        // Isi form dengan data user
-        $('#nama').value = userData.nama || '';
-        $('#alamat').value = userData.alamat || '';
-        
-        $('#profileDlg').showModal();
-      });
-      
-      // Save profile
-      $('#saveProfileBtn').addEventListener('click', async () => {
-        const nama = $('#nama').value.trim();
-        const alamat = $('#alamat').value.trim();
-        
-        if (!nama || !alamat) {
-          showToast('Nama dan alamat harus diisi', 'error');
-          return;
-        }
-        
-        $('#saveProfileBtn').disabled = true;
-        $('#saveProfileBtn').innerHTML = '<span class="spinner"></span> Menyimpan...';
-        
-        try {
-          // Update data user
-          await db.collection('users').doc(currentUser.uid).update({
-            nama: nama,
-            alamat: alamat
-          });
-          
-          userData.nama = nama;
-          userData.alamat = alamat;
-          
-          showToast('Profil berhasil disimpan', 'success');
-          $('#profileDlg').close();
-        } catch (error) {
-          console.error('Error saving profile:', error);
-          showToast('Gagal menyimpan profil', 'error');
-        } finally {
-          $('#saveProfileBtn').disabled = false;
-          $('#saveProfileBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan';
-        }
-      });
-      
-      // Create user
-      $('#createUserBtn').addEventListener('click', async () => {
-        const email = $('#newEmail').value.trim();
-        const password = $('#newPass').value.trim();
-        
-        if (!email || !password) {
-          showToast('Email dan password harus diisi', 'error');
-          return;
-        }
-        
-        $('#createUserBtn').disabled = true;
-        $('#createUserBtn').innerHTML = '<span class="spinner"></span> Membuat...';
-        
-        try {
-          // Buat user di Firebase Auth
-          const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-          const user = userCredential.user;
-          
-          // Simpan data user ke Firestore
-          await db.collection('users').doc(user.uid).set({
-            email: email,
-            nama: email.split('@')[0],
-            alamat: '',
-            role: 'karyawan',
-            createdAt: getServerTimestamp()
-          });
-          
-          showToast('Akun berhasil dibuat', 'success');
-          $('#newEmail').value = '';
-          $('#newPass').value = '';
-        } catch (error) {
-          console.error('Error creating user:', error);
-          showToast('Gagal membuat akun', 'error');
-        } finally {
-          $('#createUserBtn').disabled = false;
-          $('#createUserBtn').innerHTML = '<span class="material-symbols-rounded">person_add</span> Buat';
-        }
-      });
-      
-      // Logout
-      $('#logoutBtn').addEventListener('click', () => {
-        logout();
-      });
-      
-      // Notifications dialog
-      $('#notifBtn').addEventListener('click', () => {
-        $('#notifDlg').showModal();
-      });
-      
-      // Announce target change
-      $('#announceTarget').addEventListener('change', () => {
-        const target = $('#announceTarget').value;
-        $('#userSelection').style.display = target === 'specific' ? 'block' : 'none';
-      });
-      
-      // Send announcement
-      $('#sendAnnounce').addEventListener('click', async () => {
-        const judul = 'Pengumuman';
-        const deskripsi = $('#announceText').value.trim();
-        const target = $('#announceTarget').value;
-        
-        if (!deskripsi) {
-          showToast('Isi pengumuman tidak boleh kosong', 'error');
-          return;
-        }
-        
-        let targetUID = 'all';
-        if (target === 'specific' && selectedUsers.length > 0) {
-          targetUID = selectedUsers.join(',');
-        }
-        
-        $('#sendAnnounce').disabled = true;
-        $('#sendAnnounce').innerHTML = '<span class="spinner"></span> Mengirim...';
-        
-        try {
-          const success = await sendAnnouncement(judul, deskripsi, targetUID);
-          
-          if (success) {
-            showToast('Pengumuman berhasil dikirim', 'success');
-            $('#announceText').value = '';
-            $('#userSelection').style.display = 'none';
-            $('#announceTarget').value = 'all';
-            selectedUsers = [];
-          } else {
-            showToast('Gagal mengirim pengumuman', 'error');
-          }
-        } catch (error) {
-          console.error('Error sending announcement:', error);
-          showToast('Gagal mengirim pengumuman', 'error');
-        } finally {
-          $('#sendAnnounce').disabled = false;
-          $('#sendAnnounce').innerHTML = '<span class="material-symbols-rounded">send</span> Kirim';
-        }
-      });
-    });
-  </script>
 </body>
 </html>
