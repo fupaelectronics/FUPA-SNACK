@@ -183,7 +183,7 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Presensi Karyawan</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 08:45:32</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
       </div>
     </div>
     <div class="icons">
@@ -204,11 +204,13 @@
       <section class="card">
         <h3 style="margin:0 0 8px">Ambil presensi</h3>
         <div class="row" style="justify-content:space-between">
-          <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Sesi Presensi Berangkat</span></span>
+          <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Memuat status...</span></span>
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div class="camera-placeholder" id="cameraContainer">
+          <video id="video" autoplay playsinline style="display:none"></video>
+          <canvas id="canvas" style="display:none"></canvas>
+          <div id="photoPreview" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
         </div>
@@ -241,7 +243,12 @@
           </select>
         </div>
         <div id="logList" style="display:grid; gap:8px; max-height:400px; overflow-y:auto">
-          <!-- Riwayat presensi akan dimuat di sini -->
+          <div class="riwayat-item">
+            <div class="riwayat-jenis">
+              <span class="material-symbols-rounded">schedule</span>
+              Memuat riwayat presensi...
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -286,7 +293,11 @@
       <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="dlg-body" id="notifList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <!-- Notifikasi akan dimuat di sini -->
+      <div class="notif-item">
+        <div class="notif-content">
+          <div style="font-weight:600">Memuat notifikasi...</div>
+        </div>
+      </div>
     </div>
   </dialog>
 
@@ -319,515 +330,491 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
   <script>
-    // Inisialisasi variabel global
     let currentUser = null;
-    let stream = null;
-    let capturedImage = null;
-    let notifListener = null;
-    let presenceListener = null;
+    let cameraStream = null;
+    let capturedPhotoData = null;
+    let notificationUnsubscribe = null;
+    let presenceUnsubscribe = null;
 
-    document.addEventListener('DOMContentLoaded', function() {
-      // Cek status auth
-      fupaApp.auth.onAuthStateChanged(async (user) => {
-        if (user) {
-          currentUser = user;
-          await loadUserData();
-          initCamera();
-          initGeolocation();
-          loadPresenceHistory();
-          setupNotifications();
-          updateServerTime();
-          updatePresenceStatus();
-        } else {
-          window.location.href = 'index.html';
+    // Show profile popup for new users
+    window.showProfilePopup = () => {
+      const profileDlg = document.getElementById('profileDlg');
+      if (profileDlg) {
+        profileDlg.showModal();
+        showToast('Silakan lengkapi profil Anda terlebih dahulu', 'info');
+      }
+    };
+
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // Initialize auth
+        currentUser = await initAuth('karyawan');
+        
+        // Initialize server time
+        initServerTime();
+        
+        // Initialize notifications
+        notificationUnsubscribe = initNotifications(currentUser.uid, 'karyawan');
+        
+        // Load user profile
+        await loadUserProfile();
+        
+        // Initialize camera
+        const videoElement = document.getElementById('video');
+        if (videoElement) {
+          try {
+            cameraStream = await initCamera(videoElement);
+            videoElement.style.display = 'block';
+            document.getElementById('photoPreview').style.display = 'none';
+          } catch (error) {
+            console.error('Camera initialization failed:', error);
+          }
         }
-      });
-
-      // Event listeners
-      document.getElementById('snapBtn').addEventListener('click', captureImage);
-      document.getElementById('uploadBtn').addEventListener('click', uploadPresence);
-      document.getElementById('profileBtn').addEventListener('click', showProfileDialog);
-      document.getElementById('notifBtn').addEventListener('click', showNotificationsDialog);
-      document.getElementById('cutiFab').addEventListener('click', showCutiDialog);
-      document.getElementById('saveProfileBtn').addEventListener('click', saveProfile);
-      document.getElementById('logoutBtn').addEventListener('click', logout);
-      document.getElementById('ajukanCutiBtn').addEventListener('click', ajukanCuti);
-      document.getElementById('historyFilter').addEventListener('change', loadPresenceHistory);
-      document.getElementById('pfpFile').addEventListener('change', handleProfilePictureChange);
+        
+        // Initialize location
+        updateLocation();
+        
+        // Initialize attendance status
+        updateAttendanceStatus();
+        
+        // Load presence history
+        loadPresenceHistory();
+        
+        // Set up event listeners
+        setupEventListeners();
+        
+      } catch (error) {
+        console.error('Initialization error:', error);
+        showToast('Terjadi kesalahan saat memuat halaman', 'error');
+      }
     });
 
-    // Fungsi untuk memuat data user
-    async function loadUserData() {
+    // Load user profile
+    async function loadUserProfile() {
       try {
-        const userDoc = await fupaApp.db.collection('users').doc(currentUser.uid).get();
+        const userDoc = await db.collection('users').doc(currentUser.uid).get();
         if (userDoc.exists) {
           const userData = userDoc.data();
-          document.getElementById('nama').value = userData.nama || '';
-          document.getElementById('alamat').value = userData.alamat || '';
-          document.getElementById('pfp').src = userData.foto || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(currentUser.email)}&backgroundColor=ffb300,ffd54f&radius=20`;
           
-          // Tampilkan popup jika nama dan alamat kosong
-          if (!userData.nama || !userData.alamat) {
-            setTimeout(() => {
-              showProfileDialog();
-              fupaApp.showToast('Lengkapi profil Anda terlebih dahulu', 'info');
-            }, 1000);
+          // Update profile fields
+          const namaInput = document.getElementById('nama');
+          const alamatInput = document.getElementById('alamat');
+          const pfpImg = document.getElementById('pfp');
+          
+          if (namaInput) namaInput.value = userData.nama || '';
+          if (alamatInput) alamatInput.value = userData.alamat || '';
+          if (pfpImg && userData.foto) {
+            pfpImg.src = userData.foto;
           }
         }
       } catch (error) {
-        console.error('Error loading user data:', error);
-        fupaApp.showToast('Gagal memuat data profil', 'error');
+        console.error('Error loading user profile:', error);
       }
     }
 
-    // Fungsi untuk inisialisasi kamera
-    async function initCamera() {
+    // Update location
+    async function updateLocation() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        const videoElement = document.createElement('video');
-        videoElement.srcObject = stream;
-        videoElement.autoplay = true;
-        videoElement.playsInline = true;
-        
-        const cameraContainer = document.getElementById('cameraContainer');
-        cameraContainer.innerHTML = '';
-        cameraContainer.appendChild(videoElement);
-        
-        // Simpan video element untuk digunakan nanti
-        window.cameraVideo = videoElement;
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        document.getElementById('cameraContainer').innerHTML = `
-          <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
-          <div>Kamera tidak dapat diakses</div>
-        `;
-        fupaApp.showToast('Tidak dapat mengakses kamera', 'error');
-      }
-    }
-
-    // Fungsi untuk inisialisasi geolocation
-    function initGeolocation() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            document.getElementById('locText').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-            document.getElementById('locText').textContent = 'Lokasi tidak tersedia';
-            fupaApp.showToast('Tidak dapat mengakses lokasi', 'error');
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      } else {
-        document.getElementById('locText').textContent = 'Geolocation tidak didukung';
-      }
-    }
-
-    // Fungsi untuk mengambil gambar
-    function captureImage() {
-      if (!window.cameraVideo) {
-        fupaApp.showToast('Kamera belum siap', 'error');
-        return;
-      }
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = window.cameraVideo.videoWidth;
-      canvas.height = window.cameraVideo.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(window.cameraVideo, 0, 0, canvas.width, canvas.height);
-      
-      // Tampilkan preview gambar
-      const preview = document.createElement('img');
-      preview.src = canvas.toDataURL('image/jpeg');
-      
-      const cameraContainer = document.getElementById('cameraContainer');
-      cameraContainer.innerHTML = '';
-      cameraContainer.appendChild(preview);
-      
-      // Simpan gambar yang diambil
-      canvas.toBlob(blob => {
-        capturedImage = blob;
-        document.getElementById('uploadBtn').disabled = false;
-      }, 'image/jpeg', 0.9);
-      
-      fupaApp.showToast('Foto berhasil diambil', 'success');
-    }
-
-    // Fungsi untuk upload presensi
-    async function uploadPresence() {
-      const jenis = document.getElementById('jenis').value;
-      
-      if (!capturedImage) {
-        fupaApp.showToast('Ambil foto terlebih dahulu', 'error');
-        return;
-      }
-      
-      try {
-        document.getElementById('uploadBtn').disabled = true;
-        document.getElementById('uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
-        
-        // Dapatkan koordinat
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          });
-        });
-        
-        const coords = `${position.coords.latitude}, ${position.coords.longitude}`;
-        document.getElementById('locText').textContent = coords;
-        
-        // Kompres dan upload gambar
-        const compressedImage = await fupaApp.compressImage(capturedImage);
-        const imageUrl = await fupaApp.uploadToCloudinary(compressedImage);
-        
-        // Dapatkan waktu server
-        const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-        
-        // Tentukan status presensi
-        const status = await fupaApp.getPresenceStatus(currentUser.uid, new Date(), jenis);
-        
-        // Simpan ke Firestore
-        await fupaApp.db.collection('presensi').add({
-          uid: currentUser.uid,
-          nama: document.getElementById('nama').value || currentUser.email,
-          jenis: jenis,
-          status: status,
-          koordinat: coords,
-          selfie: imageUrl,
-          waktu: timestamp
-        });
-        
-        fupaApp.showToast('Presensi berhasil dicatat', 'success');
-        
-        // Reset state
-        capturedImage = null;
-        document.getElementById('uploadBtn').disabled = true;
-        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-        
-        // Muat ulang riwayat
-        loadPresenceHistory();
-        
-      } catch (error) {
-        console.error('Error uploading presence:', error);
-        fupaApp.showToast('Gagal mencatat presensi', 'error');
-        document.getElementById('uploadBtn').disabled = false;
-        document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-      }
-    }
-
-    // Fungsi untuk memuat riwayat presensi
-    async function loadPresenceHistory() {
-      try {
-        const limit = document.getElementById('historyFilter').value;
-        let query = fupaApp.db.collection('presensi')
-          .where('uid', '==', currentUser.uid)
-          .orderBy('waktu', 'desc');
-        
-        if (limit !== 'all') {
-          query = query.limit(parseInt(limit));
+        const location = await getCurrentLocation();
+        const locText = document.getElementById('locText');
+        if (locText) {
+          locText.textContent = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
         }
+      } catch (error) {
+        console.error('Error getting location:', error);
+        const locText = document.getElementById('locText');
+        if (locText) {
+          locText.textContent = 'Lokasi tidak terdeteksi';
+        }
+      }
+    }
+
+    // Update attendance status
+    async function updateAttendanceStatus() {
+      try {
+        const statusText = document.getElementById('statusText');
+        const statusChip = document.getElementById('statusChip');
         
-        const snapshot = await query.get();
+        if (!statusText || !statusChip) return;
+        
+        const jenis = document.getElementById('jenis').value;
+        const status = await getAttendanceStatus(currentUser.uid, jenis);
+        
+        statusText.textContent = status;
+        
+        // Update status chip color
+        if (status === 'Tepat Waktu') {
+          statusChip.className = 'status s-good';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span id="statusText">' + status + '</span>';
+        } else if (status === 'Terlambat') {
+          statusChip.className = 'status s-warn';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">' + status + '</span>';
+        } else if (status === 'Libur') {
+          statusChip.className = 'status s-bad';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">event_busy</span><span id="statusText">' + status + '</span>';
+        } else {
+          statusChip.className = 'status s-bad';
+          statusChip.innerHTML = '<span class="material-symbols-rounded">block</span><span id="statusText">' + status + '</span>';
+        }
+      } catch (error) {
+        console.error('Error updating attendance status:', error);
+      }
+    }
+
+    // Load presence history
+    function loadPresenceHistory(limit = 20) {
+      if (presenceUnsubscribe) {
+        presenceUnsubscribe();
+      }
+      
+      let query = db.collection('presensi')
+        .where('uid', '==', currentUser.uid)
+        .orderBy('timestamp', 'desc');
+      
+      if (limit !== 'all') {
+        query = query.limit(parseInt(limit));
+      }
+      
+      presenceUnsubscribe = query.onSnapshot((snapshot) => {
         const logList = document.getElementById('logList');
+        if (!logList) return;
+        
         logList.innerHTML = '';
         
         if (snapshot.empty) {
-          logList.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7">Belum ada riwayat presensi</div>';
+          logList.innerHTML = `
+            <div class="riwayat-item">
+              <div class="riwayat-jenis">
+                <span class="material-symbols-rounded">history</span>
+                Belum ada riwayat presensi
+              </div>
+            </div>
+          `;
           return;
         }
         
-        snapshot.forEach(doc => {
+        snapshot.forEach((doc) => {
           const data = doc.data();
-          const waktu = data.waktu ? data.waktu.toDate() : new Date();
-          const waktuStr = fupaApp.formatDate(waktu);
+          const date = data.timestamp.toDate();
+          const formattedDate = formatDate(date);
           
-          // Tentukan class status
           let statusClass = 's-good';
-          if (data.status === 'Terlambat') statusClass = 's-warn';
-          if (data.status === 'Di Luar Sesi Presensi' || data.status === 'Libur') statusClass = 's-bad';
+          let statusIcon = 'check_circle';
           
-          const item = document.createElement('div');
-          item.className = 'riwayat-item';
-          item.innerHTML = `
+          if (data.status === 'Terlambat') {
+            statusClass = 's-warn';
+            statusIcon = 'schedule';
+          } else if (data.status === 'Di Luar Sesi Presensi' || data.status === 'Libur') {
+            statusClass = 's-bad';
+            statusIcon = 'block';
+          }
+          
+          const riwayatItem = document.createElement('div');
+          riwayatItem.className = 'riwayat-item';
+          riwayatItem.innerHTML = `
             <div class="riwayat-jenis">
               <span class="material-symbols-rounded">${data.jenis === 'berangkat' ? 'login' : 'logout'}</span>
-              ${data.jenis}
+              ${data.jenis === 'berangkat' ? 'Berangkat' : 'Pulang'}
               <span class="status ${statusClass}" style="margin-left:auto;font-size:12px">
+                <span class="material-symbols-rounded">${statusIcon}</span>
                 ${data.status}
               </span>
             </div>
             <div class="riwayat-time">
-              ${waktuStr}
+              ${formattedDate}
             </div>
           `;
           
-          logList.appendChild(item);
+          logList.appendChild(riwayatItem);
         });
-      } catch (error) {
+      }, (error) => {
         console.error('Error loading presence history:', error);
-        fupaApp.showToast('Gagal memuat riwayat presensi', 'error');
-      }
+      });
     }
 
-    // Fungsi untuk mengatur notifikasi
-    function setupNotifications() {
-      // Hentikan listener sebelumnya jika ada
-      if (notifListener) notifListener();
+    // Set up event listeners
+    function setupEventListeners() {
+      // Profile dialog
+      document.getElementById('profileBtn').addEventListener('click', () => {
+        document.getElementById('profileDlg').showModal();
+      });
       
-      // Setup real-time listener untuk notifikasi
-      notifListener = fupaApp.db.collection('notifikasi')
-        .where('uid', '==', currentUser.uid)
-        .orderBy('timestamp', 'desc')
-        .onSnapshot(snapshot => {
-          const notifList = document.getElementById('notifList');
-          const notifBadge = document.getElementById('notifBadge');
-          let unreadCount = 0;
+      // Save profile
+      document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+        try {
+          const nama = document.getElementById('nama').value;
+          const alamat = document.getElementById('alamat').value;
+          const pfpFile = document.getElementById('pfpFile').files[0];
           
-          notifList.innerHTML = '';
+          let fotoUrl = '';
           
-          if (snapshot.empty) {
-            notifList.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.7">Tidak ada notifikasi</div>';
-            notifBadge.style.display = 'none';
+          // Upload profile picture if selected
+          if (pfpFile) {
+            const compressedImage = await compressImage(pfpFile);
+            fotoUrl = await uploadToCloudinary(compressedImage);
+          }
+          
+          // Update user profile
+          const updateData = {
+            nama,
+            alamat,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          
+          if (fotoUrl) {
+            updateData.foto = fotoUrl;
+          }
+          
+          await db.collection('users').doc(currentUser.uid).update(updateData);
+          
+          // Update profile picture in dialog if uploaded
+          if (fotoUrl) {
+            document.getElementById('pfp').src = fotoUrl;
+          }
+          
+          showToast('Profil berhasil disimpan', 'success');
+          document.getElementById('profileDlg').close();
+        } catch (error) {
+          console.error('Error saving profile:', error);
+          showToast('Gagal menyimpan profil', 'error');
+        }
+      });
+      
+      // Logout
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        try {
+          if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+          }
+          
+          if (notificationUnsubscribe) {
+            notificationUnsubscribe();
+          }
+          
+          if (presenceUnsubscribe) {
+            presenceUnsubscribe();
+          }
+          
+          await auth.signOut();
+          window.location.href = 'index.html';
+        } catch (error) {
+          console.error('Error during logout:', error);
+        }
+      });
+      
+      // Notifications dialog
+      document.getElementById('notifBtn').addEventListener('click', () => {
+        document.getElementById('notifDlg').showModal();
+      });
+      
+      // Mark notification as read when clicked
+      document.addEventListener('click', async (e) => {
+        if (e.target.closest('.notif-item')) {
+          const notifItem = e.target.closest('.notif-item');
+          const notifId = notifItem.dataset.id;
+          
+          if (notifId) {
+            await markNotificationAsRead(notifId);
+          }
+        }
+      });
+      
+      // Cuti dialog
+      document.getElementById('cutiFab').addEventListener('click', () => {
+        // Set default date to today
+        document.getElementById('cutiTanggal').valueAsDate = new Date();
+        document.getElementById('cutiDlg').showModal();
+      });
+      
+      // Submit cuti
+      document.getElementById('ajukanCutiBtn').addEventListener('click', async () => {
+        try {
+          const jenis = document.getElementById('cutiJenis').value;
+          const tanggal = document.getElementById('cutiTanggal').value;
+          const catatan = document.getElementById('cutiCatatan').value;
+          
+          if (!tanggal) {
+            showToast('Pilih tanggal cuti', 'error');
             return;
           }
           
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (!data.isRead) unreadCount++;
-            
-            const item = document.createElement('div');
-            item.className = 'notif-item';
-            item.innerHTML = `
-              <div class="notif-content">
-                <div style="font-weight:600">${data.pesan}</div>
-                <div style="font-size:12px;opacity:0.7">${data.timestamp ? data.timestamp.toDate().toLocaleString('id-ID') : ''}</div>
-              </div>
-              <div class="notif-actions">
-                <button class="icon-btn mark-read" data-id="${doc.id}" title="Tandai sudah dibaca" style="font-size:16px">
-                  <span class="material-symbols-rounded">check_circle</span>
-                </button>
-              </div>
-            `;
-            
-            notifList.appendChild(item);
+          document.getElementById('ajukanCutiBtn').disabled = true;
+          document.getElementById('ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
+          
+          // Get user data for notification
+          const userDoc = await db.collection('users').doc(currentUser.uid).get();
+          const userData = userDoc.data();
+          
+          // Create cuti request
+          const cutiRef = await db.collection('cuti').add({
+            uid: currentUser.uid,
+            jenis,
+            tanggal: new Date(tanggal),
+            catatan,
+            status: 'pending',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
           });
           
-          // Update badge
-          if (unreadCount > 0) {
-            notifBadge.textContent = unreadCount;
-            notifBadge.style.display = 'grid';
-          } else {
-            notifBadge.style.display = 'none';
+          // Create notification for admin
+          await db.collection('notifikasi').add({
+            jenis: 'cuti_request',
+            targetRole: 'admin',
+            refId: cutiRef.id,
+            pesan: `${userData.nama || currentUser.email} mengajukan cuti ${jenis} tanggal ${new Date(tanggal).toLocaleDateString('id-ID')}`,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            isRead: false
+          });
+          
+          showToast('Cuti berhasil diajukan', 'success');
+          document.getElementById('cutiDlg').close();
+        } catch (error) {
+          console.error('Error submitting cuti:', error);
+          showToast('Gagal mengajukan cuti', 'error');
+        } finally {
+          document.getElementById('ajukanCutiBtn').disabled = false;
+          document.getElementById('ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
+        }
+      });
+      
+      // Snap photo
+      document.getElementById('snapBtn').addEventListener('click', () => {
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('canvas');
+        const photoPreview = document.getElementById('photoPreview');
+        
+        if (!videoElement || !canvasElement) return;
+        
+        // Set canvas dimensions to match video
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        
+        // Capture photo
+        capturedPhotoData = capturePhoto(videoElement, canvasElement);
+        
+        // Show preview
+        photoPreview.innerHTML = `<img src="${capturedPhotoData}" alt="Preview foto" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`;
+        photoPreview.style.display = 'block';
+        videoElement.style.display = 'none';
+        
+        // Enable upload button
+        document.getElementById('uploadBtn').disabled = false;
+        
+        showToast('Foto berhasil diambil', 'success');
+      });
+      
+      // Upload presence
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        try {
+          if (!capturedPhotoData) {
+            showToast('Ambil foto terlebih dahulu', 'error');
+            return;
           }
           
-          // Tambahkan event listener untuk mark as read
-          document.querySelectorAll('.mark-read').forEach(btn => {
-            btn.addEventListener('click', function() {
-              const notifId = this.getAttribute('data-id');
-              markNotificationAsRead(notifId);
-            });
+          document.getElementById('uploadBtn').disabled = true;
+          document.getElementById('uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+          
+          const jenis = document.getElementById('jenis').value;
+          
+          // Get current location
+          const location = await getCurrentLocation();
+          const koordinat = `${location.lat}, ${location.lng}`;
+          
+          // Get attendance status
+          const status = await getAttendanceStatus(currentUser.uid, jenis);
+          
+          if (status === 'Di Luar Sesi Presensi') {
+            showToast('Tidak dapat melakukan presensi di luar sesi', 'error');
+            document.getElementById('uploadBtn').disabled = false;
+            document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+            return;
+          }
+          
+          // Convert data URL to blob
+          const response = await fetch(capturedPhotoData);
+          const blob = await response.blob();
+          
+          // Compress image
+          const compressedImage = await compressImage(blob);
+          
+          // Upload image to Cloudinary
+          const selfieUrl = await uploadToCloudinary(compressedImage);
+          
+          // Get user data for name
+          const userDoc = await db.collection('users').doc(currentUser.uid).get();
+          const userData = userDoc.data();
+          
+          // Save presence to Firestore
+          await db.collection('presensi').add({
+            uid: currentUser.uid,
+            nama: userData.nama || currentUser.email,
+            jenis,
+            status,
+            koordinat,
+            selfie: selfieUrl,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
           });
-        }, error => {
-          console.error('Error in notifications listener:', error);
-        });
-    }
-
-    // Fungsi untuk menandai notifikasi sebagai sudah dibaca
-    async function markNotificationAsRead(notifId) {
-      try {
-        await fupaApp.db.collection('notifikasi').doc(notifId).update({
-          isRead: true
-        });
-      } catch (error) {
-        console.error('Error marking notification as read:', error);
-      }
-    }
-
-    // Fungsi untuk mengajukan cuti
-    async function ajukanCuti() {
-      const jenis = document.getElementById('cutiJenis').value;
-      const tanggal = document.getElementById('cutiTanggal').value;
-      const catatan = document.getElementById('cutiCatatan').value;
-      
-      if (!tanggal) {
-        fupaApp.showToast('Pilih tanggal cuti', 'error');
-        return;
-      }
-      
-      try {
-        document.getElementById('ajukanCutiBtn').disabled = true;
-        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
-        
-        // Simpan pengajuan cuti
-        const cutiRef = await fupaApp.db.collection('cuti').add({
-          uid: currentUser.uid,
-          nama: document.getElementById('nama').value || currentUser.email,
-          jenis: jenis,
-          tanggal: new Date(tanggal),
-          catatan: catatan,
-          status: 'pending',
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Buat notifikasi untuk admin
-        await fupaApp.db.collection('notifikasi').add({
-          jenis: 'cuti_request',
-          targetRole: 'admin',
-          refId: cutiRef.id,
-          pesan: `${document.getElementById('nama').value || currentUser.email} mengajukan cuti ${jenis} pada ${new Date(tanggal).toLocaleDateString('id-ID')}`,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-          isRead: false
-        });
-        
-        fupaApp.showToast('Cuti berhasil diajukan', 'success');
-        document.getElementById('cutiDlg').close();
-        
-      } catch (error) {
-        console.error('Error submitting cuti:', error);
-        fupaApp.showToast('Gagal mengajukan cuti', 'error');
-      } finally {
-        document.getElementById('ajukanCutiBtn').disabled = false;
-        document.getElementById('ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
-      }
-    }
-
-    // Fungsi untuk memperbarui status presensi
-    async function updatePresenceStatus() {
-      try {
-        const now = new Date();
-        const status = await fupaApp.getPresenceStatus(currentUser.uid, now, document.getElementById('jenis').value);
-        
-        const statusElement = document.getElementById('statusText');
-        const statusChip = document.getElementById('statusChip');
-        
-        statusElement.textContent = status;
-        
-        // Update warna status
-        if (status === 'Tepat Waktu') {
-          statusChip.className = 'status s-good';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span id="statusText">Tepat Waktu</span>';
-        } else if (status === 'Terlambat') {
-          statusChip.className = 'status s-warn';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">Terlambat</span>';
-        } else if (status === 'Libur') {
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">Libur</span>';
-        } else {
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">block</span><span id="statusText">Di Luar Sesi Presensi</span>';
+          
+          // Create notification for user
+          await db.collection('notifikasi').add({
+            uid: currentUser.uid,
+            jenis: 'presensi',
+            pesan: `Presensi ${jenis} Anda hari ini berhasil dicatat dengan status: ${status}`,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            isRead: false
+          });
+          
+          showToast('Presensi berhasil dicatat', 'success');
+          
+          // Reset camera
+          capturedPhotoData = null;
+          document.getElementById('photoPreview').innerHTML = '<span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>';
+          document.getElementById('photoPreview').style.display = 'block';
+          document.getElementById('video').style.display = 'none';
+          document.getElementById('uploadBtn').disabled = true;
+          document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+          
+          // Restart camera
+          if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+          }
+          cameraStream = await initCamera(document.getElementById('video'));
+          document.getElementById('video').style.display = 'block';
+          document.getElementById('photoPreview').style.display = 'none';
+          
+        } catch (error) {
+          console.error('Error uploading presence:', error);
+          showToast('Gagal mengupload presensi', 'error');
+          document.getElementById('uploadBtn').disabled = false;
+          document.getElementById('uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
         }
-      } catch (error) {
-        console.error('Error updating presence status:', error);
-      }
-    }
-
-    // Fungsi untuk memperbarui waktu server
-    function updateServerTime() {
-      const now = new Date();
-      document.getElementById('serverTime').textContent = fupaApp.formatDate(now);
-      setTimeout(updateServerTime, 1000);
-    }
-
-    // Fungsi untuk menangani perubahan foto profil
-    async function handleProfilePictureChange(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+      });
       
-      try {
-        // Kompres dan upload gambar
-        const compressedImage = await fupaApp.compressImage(file);
-        const imageUrl = await fupaApp.uploadToCloudinary(compressedImage);
-        
-        // Update foto profil
-        document.getElementById('pfp').src = imageUrl;
-        
-        // Simpan ke Firestore
-        await fupaApp.db.collection('users').doc(currentUser.uid).update({
-          foto: imageUrl
-        });
-        
-        fupaApp.showToast('Foto profil berhasil diubah', 'success');
-      } catch (error) {
-        console.error('Error changing profile picture:', error);
-        fupaApp.showToast('Gagal mengubah foto profil', 'error');
-      }
-    }
-
-    // Fungsi untuk menyimpan profil
-    async function saveProfile() {
-      const nama = document.getElementById('nama').value;
-      const alamat = document.getElementById('alamat').value;
+      // Change attendance type
+      document.getElementById('jenis').addEventListener('change', () => {
+        updateAttendanceStatus();
+      });
       
-      if (!nama || !alamat) {
-        fupaApp.showToast('Lengkapi nama dan alamat', 'error');
-        return;
-      }
-      
-      try {
-        document.getElementById('saveProfileBtn').disabled = true;
-        document.getElementById('saveProfileBtn').innerHTML = '<span class="spinner"></span> Menyimpan...';
-        
-        // Update data user
-        await fupaApp.db.collection('users').doc(currentUser.uid).update({
-          nama: nama,
-          alamat: alamat
-        });
-        
-        fupaApp.showToast('Profil berhasil disimpan', 'success');
-        document.getElementById('profileDlg').close();
-        
-      } catch (error) {
-        console.error('Error saving profile:', error);
-        fupaApp.showToast('Gagal menyimpan profil', 'error');
-      } finally {
-        document.getElementById('saveProfileBtn').disabled = false;
-        document.getElementById('saveProfileBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan';
-      }
+      // Change history filter
+      document.getElementById('historyFilter').addEventListener('change', (e) => {
+        loadPresenceHistory(e.target.value);
+      });
     }
 
-    // Fungsi untuk logout
-    async function logout() {
-      try {
-        // Hentikan semua listener
-        if (notifListener) notifListener();
-        if (presenceListener) presenceListener();
-        
-        // Stop kamera
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
-        
-        // Logout dari Firebase
-        await fupaApp.auth.signOut();
-        window.location.href = 'index.html';
-      } catch (error) {
-        console.error('Error logging out:', error);
-        fupaApp.showToast('Gagal keluar', 'error');
-      }
-    }
-
-    // Fungsi untuk menampilkan dialog profil
-    function showProfileDialog() {
-      document.getElementById('profileDlg').showModal();
-    }
-
-    // Fungsi untuk menampilkan dialog notifikasi
-    function showNotificationsDialog() {
-      document.getElementById('notifDlg').showModal();
-    }
-
-    // Fungsi untuk menampilkan dialog cuti
-    function showCutiDialog() {
-      // Set default date to today
-      document.getElementById('cutiTanggal').valueAsDate = new Date();
-      document.getElementById('cutiDlg').showModal();
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
     }
   </script>
 </body>
