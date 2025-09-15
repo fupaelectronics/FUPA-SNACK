@@ -23,7 +23,7 @@
       min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply; filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
       background:
         radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
         radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
@@ -97,26 +97,6 @@
       text-align: center;
       display: none;
     }
-    #profileModal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
-      z-index: 100;
-      justify-content: center;
-      align-items: center;
-    }
-    #profileModal .card {
-      width: min(400px, 90vw);
-      animation: pop 0.3s ease;
-    }
-    @keyframes pop {
-      from { transform: scale(0.9); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
   </style>
 </head>
 <body>
@@ -157,41 +137,13 @@
     </div>
   </div>
 
-  <!-- Modal profil untuk mengisi data jika kosong -->
-  <div id="profileModal">
-    <div class="card">
-      <div class="brand">
-        <span class="material-symbols-rounded" style="color:#FF8F00;">person</span>
-        <h2>Lengkapi Profil</h2>
-      </div>
-      <p class="sub">Silakan lengkapi data profil Anda sebelum melanjutkan.</p>
-
-      <div class="input">
-        <span class="material-symbols-rounded">badge</span>
-        <input id="profileNama" type="text" placeholder="Nama lengkap" />
-      </div>
-      <div class="input">
-        <span class="material-symbols-rounded">home</span>
-        <input id="profileAlamat" type="text" placeholder="Alamat" />
-      </div>
-      
-      <div class="row">
-        <button id="saveProfileBtn" class="btn">
-          <span id="saveProfileText">Simpan</span>
-          <span id="saveProfileSpinner" class="spinner" style="display:none;"></span>
-        </button>
-      </div>
-    </div>
-  </div>
-
   <div class="toast" id="toast"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script>
-    // Firebase config - menggunakan config dari pedoman
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
       authDomain: "fupa-snack.firebaseapp.com",
@@ -206,7 +158,7 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // UID Admin dan Karyawan dari pedoman
+    // UID Admin dan Karyawan
     const ADMIN_UIDS = [
       "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
       "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
@@ -229,8 +181,8 @@
     // Fungsi utilitas
     const $ = (sel) => document.querySelector(sel);
     const showToast = (msg, type = 'info') => {
-      const toast = $("#toast");
-      if (!toast) return alert(msg);
+      const t = $("#toast");
+      if (!t) return alert(msg);
       
       const colors = {
         success: '#2e7d32',
@@ -239,67 +191,44 @@
         info: '#111'
       };
       
-      toast.style.backgroundColor = colors[type] || colors.info;
-      toast.textContent = msg;
-      toast.style.display = "block";
-      setTimeout(() => { toast.style.display = "none"; }, 3000);
+      t.style.backgroundColor = colors[type] || colors.info;
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 3000);
     };
 
     // Redirect berdasarkan role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.includes(uid)) {
-        return "admin.html";
-      } else if (KARYAWAN_UIDS.includes(uid)) {
-        return "karyawan.html";
-      } else {
+    async function redirectByRole(uid) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          
+          if (userData.role === 'admin') {
+            return "admin.html";
+          } else if (userData.role === 'karyawan') {
+            return "karyawan.html";
+          }
+        }
+        
+        // Fallback ke UID list jika data role tidak ada
+        if (ADMIN_UIDS.includes(uid)) {
+          return "admin.html";
+        } else if (KARYAWAN_UIDS.includes(uid)) {
+          return "karyawan.html";
+        } else {
+          auth.signOut();
+          return null;
+        }
+      } catch (error) {
+        console.error("Error mendapatkan role:", error);
         auth.signOut();
         return null;
       }
     }
 
-    // Fungsi untuk memuat data user
-    async function muatDataUser(uid) {
-      try {
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          return userDoc.data();
-        } else {
-          // Buat dokumen user baru jika tidak ada
-          const userData = {
-            nama: '',
-            alamat: '',
-            foto: `https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=ffb300,ffd54f&radius=20`,
-            role: ADMIN_UIDS.includes(uid) ? 'admin' : 'karyawan',
-            dibuat: firebase.firestore.FieldValue.serverTimestamp(),
-            diupdate: firebase.firestore.FieldValue.serverTimestamp()
-          };
-          
-          await db.collection('users').doc(uid).set(userData);
-          return userData;
-        }
-      } catch (error) {
-        console.error('Error memuat data user:', error);
-        showToast('Gagal memuat data profil', 'error');
-        return null;
-      }
-    }
-
-    // Fungsi untuk memperbarui data user
-    async function perbaruiDataUser(uid, data) {
-      try {
-        await db.collection('users').doc(uid).update({
-          ...data,
-          diupdate: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        return true;
-      } catch (error) {
-        console.error('Error memperbarui data user:', error);
-        showToast('Gagal menyimpan profil', 'error');
-        return false;
-      }
-    }
-
-    // Toggle password visibility
+    // UI only: toggle password eye
     document.getElementById('togglePass').onclick = () => {
       const inp = document.getElementById('password');
       const eye = document.getElementById('eye');
@@ -318,7 +247,7 @@
       const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        showToast("Isi email dan kata sandi.", "error"); 
+        showToast("Isi email dan kata sandi.", 'error'); 
         return; 
       }
       
@@ -333,35 +262,24 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
-        // Periksa role user
-        const redirectPage = redirectByRole(user.uid);
-        if (!redirectPage) {
-          showToast("Akses ditolak: akun belum diberi peran yang benar.", "error");
+        // Tampilkan pesan sukses
+        loginText.textContent = "Berhasil!";
+        successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
+        successMessage.style.display = "block";
+        
+        // Redirect berdasarkan role
+        const redirectPage = await redirectByRole(user.uid);
+        if (redirectPage) {
+          setTimeout(() => {
+            window.location.href = redirectPage;
+          }, 1500);
+        } else {
+          showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
           await auth.signOut();
           loginBtn.disabled = false;
           loginText.textContent = "Masuk";
           loginSpinner.style.display = "none";
-          return;
-        }
-        
-        // Muat data user
-        const userData = await muatDataUser(user.uid);
-        
-        // Jika nama atau alamat kosong, tampilkan modal
-        if (!userData.nama || !userData.alamat) {
-          $("#profileModal").style.display = "flex";
-          loginBtn.disabled = false;
-          loginText.textContent = "Masuk";
-          loginSpinner.style.display = "none";
-        } else {
-          // Tampilkan pesan sukses dan redirect
-          loginText.textContent = "Berhasil!";
-          successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
-          successMessage.style.display = "block";
-          
-          setTimeout(() => {
-            window.location.href = redirectPage;
-          }, 1500);
+          successMessage.style.display = "none";
         }
       } catch (e) {
         console.error("Login error:", e);
@@ -371,57 +289,10 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          showToast("Email atau kata sandi salah.", "error");
+          showToast("Email atau kata sandi salah.", 'error');
         } else {
-          showToast("Gagal masuk. Periksa koneksi internet Anda.", "error");
+          showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
         }
-      }
-    };
-
-    // Handle save profile
-    document.getElementById('saveProfileBtn').onclick = async () => {
-      const nama = $("#profileNama").value.trim();
-      const alamat = $("#profileAlamat").value.trim();
-      const saveBtn = $("#saveProfileBtn");
-      const saveText = $("#saveProfileText");
-      const saveSpinner = $("#saveProfileSpinner");
-      
-      if (!nama || !alamat) {
-        showToast("Isi nama dan alamat lengkap.", "error");
-        return;
-      }
-      
-      try {
-        saveBtn.disabled = true;
-        saveText.textContent = "Menyimpan...";
-        saveSpinner.style.display = "inline-block";
-        
-        const user = auth.currentUser;
-        if (!user) {
-          showToast("Sesi tidak valid. Silakan login ulang.", "error");
-          return;
-        }
-        
-        // Update data user
-        const success = await perbaruiDataUser(user.uid, { nama, alamat });
-        
-        if (success) {
-          showToast("Profil berhasil disimpan.", "success");
-          
-          // Redirect berdasarkan role
-          const redirectPage = redirectByRole(user.uid);
-          if (redirectPage) {
-            setTimeout(() => {
-              window.location.href = redirectPage;
-            }, 1000);
-          }
-        }
-      } catch (error) {
-        console.error("Error menyimpan profil:", error);
-        showToast("Gagal menyimpan profil.", "error");
-        saveBtn.disabled = false;
-        saveText.textContent = "Simpan";
-        saveSpinner.style.display = "none";
       }
     };
 
@@ -432,29 +303,15 @@
       }
     });
 
-    // Cek jika user sudah login
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        // Redirect berdasarkan role jika data sudah lengkap
-        const userData = await muatDataUser(user.uid);
-        if (userData && userData.nama && userData.alamat) {
-          const redirectPage = redirectByRole(user.uid);
-          if (redirectPage && window.location.pathname.endsWith('index.html')) {
-            window.location.href = redirectPage;
-          }
-        }
-      }
-    });
-
-    // Register service worker
+    // Daftarkan service worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then((registration) => {
-            console.log('SW registered: ', registration);
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
           })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
+          .catch(function(error) {
+            console.log('ServiceWorker registration failed: ', error);
           });
       });
     }
