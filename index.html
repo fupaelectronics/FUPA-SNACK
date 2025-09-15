@@ -178,21 +178,38 @@
       "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
     ];
 
-    // Fungsi utilitas
+    // Util UI
     const $ = (sel) => document.querySelector(sel);
-    const toast = (msg) => {
+    const showToast = (msg, type = 'info') => {
       const t = $("#toast");
       if (!t) return alert(msg);
+      
+      const colors = {
+        success: '#2e7d32',
+        error: '#c62828',
+        warning: '#f9a825',
+        info: '#111'
+      };
+      
+      t.style.backgroundColor = colors[type] || colors.info;
       t.textContent = msg;
       t.style.display = "block";
-      setTimeout(() => { t.style.display = "none"; }, 2200);
+      setTimeout(() => { t.style.display = "none"; }, 3000);
+    };
+
+    // Get user role from UID
+    const getUserRole = (uid) => {
+      if (ADMIN_UIDS.includes(uid)) return 'admin';
+      if (KARYAWAN_UIDS.includes(uid)) return 'karyawan';
+      return null;
     };
 
     // Redirect berdasarkan role
     function redirectByRole(uid) {
-      if (ADMIN_UIDS.includes(uid)) {
+      const role = getUserRole(uid);
+      if (role === 'admin') {
         return "admin.html";
-      } else if (KARYAWAN_UIDS.includes(uid)) {
+      } else if (role === 'karyawan') {
         return "karyawan.html";
       } else {
         auth.signOut();
@@ -219,7 +236,7 @@
       const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        toast("Isi email dan kata sandi."); 
+        showToast("Isi email dan kata sandi.", 'error'); 
         return; 
       }
       
@@ -234,27 +251,16 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
-        // Cek apakah user ada di daftar UID yang diizinkan
-        const redirectPage = redirectByRole(user.uid);
-        
-        if (!redirectPage) {
-          throw new Error("Akun tidak terdaftar dalam sistem");
-        }
-        
-        // Cek apakah data user sudah ada di Firestore
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        
-        // Jika data user belum ada, buat data baru
-        if (!userDoc.exists) {
-          const role = ADMIN_UIDS.includes(user.uid) ? 'admin' : 'karyawan';
-          await db.collection('users').doc(user.uid).set({
-            email: user.email,
-            nama: '',
-            alamat: '',
-            role: role,
-            foto: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.email)}&backgroundColor=ffb300,ffd54f&radius=20`,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
+        // Cek role
+        const role = getUserRole(user.uid);
+        if (!role) {
+          await auth.signOut();
+          showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
+          loginBtn.disabled = false;
+          loginText.textContent = "Masuk";
+          loginSpinner.style.display = "none";
+          successMessage.style.display = "none";
+          return;
         }
         
         // Tampilkan pesan sukses
@@ -263,9 +269,19 @@
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        setTimeout(() => {
-          window.location.href = redirectPage;
-        }, 1500);
+        const redirectPage = redirectByRole(user.uid);
+        if (redirectPage) {
+          setTimeout(() => {
+            window.location.href = redirectPage;
+          }, 1500);
+        } else {
+          showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
+          await auth.signOut();
+          loginBtn.disabled = false;
+          loginText.textContent = "Masuk";
+          loginSpinner.style.display = "none";
+          successMessage.style.display = "none";
+        }
       } catch (e) {
         console.error("Login error:", e);
         loginBtn.disabled = false;
@@ -274,11 +290,9 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          toast("Email atau kata sandi salah.");
-        } else if (e.message === "Akun tidak terdaftar dalam sistem") {
-          toast("Akun tidak terdaftar dalam sistem.");
+          showToast("Email atau kata sandi salah.", 'error');
         } else {
-          toast("Gagal masuk. Periksa koneksi internet Anda.");
+          showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
         }
       }
     };
@@ -289,6 +303,19 @@
         document.getElementById('loginBtn').click();
       }
     });
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('SW registered: ', registration);
+          })
+          .catch((registrationError) => {
+            console.log('SW registration failed: ', registrationError);
+          });
+      });
+    }
   </script>
 </body>
 </html>
