@@ -1,67 +1,43 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection: hanya user yang terautentikasi yang bisa membaca/menulis data mereka sendiri
+    // Koleksi users: hanya user yang login dapat membaca/menulis data mereka sendiri
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && isAdmin(request.auth.uid);
+      
+      // Admin dapat membaca semua data user
+      allow read: if request.auth != null && 
+        (request.auth.uid == 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
+         request.auth.uid == 'uB2XsyM6fXUj493cRlHCqpe2fxH3');
     }
     
-    // Presensi collection: user hanya bisa membaca data mereka sendiri, admin bisa semua
+    // Koleksi presensi: user dapat menambah dan membaca data mereka sendiri
     match /presensi/{document} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && 
+        (resource.data.uid == request.auth.uid ||
+         request.auth.uid == 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
+         request.auth.uid == 'uB2XsyM6fXUj493cRlHCqpe2fxH3');
     }
     
-    // Cuti collection: user bisa membaca dan membuat cuti mereka sendiri, admin bisa semua
+    // Koleksi cuti: user dapat menambah dan membaca data mereka sendiri
     match /cuti/{document} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
-      allow update, delete: if request.auth != null && isAdmin(request.auth.uid);
+      allow create: if request.auth != null;
+      allow read, update: if request.auth != null && 
+        (resource.data.uid == request.auth.uid ||
+         request.auth.uid == 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
+         request.auth.uid == 'uB2XsyM6fXUj493cRlHCqpe2fxH3');
     }
     
-    // Notifikasi collection: user bisa membaca notifikasi mereka, admin bisa semua
+    // Koleksi notifikasi: user dapat membaca notifikasi mereka sendiri
     match /notifikasi/{document} {
-      allow read: if request.auth != null && (
-        resource.data.uid == request.auth.uid || 
-        resource.data.targetRole == 'karyawan' && getUserRole(request.auth.uid) == 'karyawan' ||
-        resource.data.targetRole == 'admin' && isAdmin(request.auth.uid) ||
-        isAdmin(request.auth.uid)
-      );
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-    }
-    
-    // Aturan waktu collections: admin bisa mengelola, user hanya bisa membaca
-    match /aturanwaktudefault/{document} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-    }
-    
-    match /aturanwaktuuser/{document} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-    }
-    
-    // Pengumuman collection: admin bisa mengelola, user hanya bisa membaca pengumuman yang ditujukan kepada mereka
-    match /pengumuman/{document} {
-      allow read: if request.auth != null && (
-        resource.data.target == 'all' || 
-        resource.data.target == request.auth.uid || 
-        (resource.data.target is list && request.auth.uid in resource.data.target) ||
-        isAdmin(request.auth.uid)
-      );
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-    }
-    
-    // Fungsi pembantu untuk mengecek apakah user adalah admin
-    function isAdmin(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid)) && 
-        get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin';
-    }
-    
-    // Fungsi untuk mendapatkan role user
-    function getUserRole(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+      allow read: if request.auth != null && 
+        (resource.data.targetUid == request.auth.uid ||
+         resource.data.targetRole == 'all' ||
+         request.auth.uid == 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
+         request.auth.uid == 'uB2XsyM6fXUj493cRlHCqpe2fxH3');
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.targetUid;
     }
   }
 }
