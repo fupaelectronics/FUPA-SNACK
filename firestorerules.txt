@@ -1,39 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Collection users: hanya user yang terautentikasi yang bisa baca/tulis data sendiri
+    // Users collection
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Admin dapat membaca semua data user
-      allow read: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow create: if request.auth != null;
     }
     
-    // Collection presensi: user bisa membuat dan membaca data sendiri
-    match /presensi/{document} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && 
-        (resource.data.uid == request.auth.uid || 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    // Presensi collection
+    match /presensi/{presensiId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
     }
     
-    // Collection cuti: user bisa membuat data sendiri, admin bisa membaca semua
-    match /cuti/{document} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && 
-        (resource.data.uid == request.auth.uid || 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-      allow update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Cuti collection
+    match /cuti/{cutiId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
     }
     
-    // Collection notifikasi: user bisa membaca notifikasi untuk dirinya sendiri
-    match /notifikasi/{document} {
-      allow create: if request.auth != null;
+    // Notifikasi collection
+    match /notifikasi/{notifikasiId} {
       allow read: if request.auth != null && 
         (resource.data.targetUID == request.auth.uid || 
          resource.data.targetRole == 'all' ||
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-      allow delete: if request.auth != null && request.auth.uid == resource.data.targetUID;
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
 }
