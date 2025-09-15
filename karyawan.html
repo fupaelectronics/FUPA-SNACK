@@ -183,14 +183,14 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Presensi Karyawan</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 08:45:32</div>
       </div>
     </div>
     <div class="icons">
       <div style="position:relative">
         <button id="notifBtn" class="icon-btn" title="Notifikasi">
           <span class="material-symbols-rounded">notifications</span>
-          <span id="notifBadge" class="badge" style="display:none">0</span>
+          <span id="notifBadge" class="badge">0</span>
         </button>
       </div>
       <button id="profileBtn" class="icon-btn" title="Profil">
@@ -204,15 +204,13 @@
       <section class="card">
         <h3 style="margin:0 0 8px">Ambil presensi</h3>
         <div class="row" style="justify-content:space-between">
-          <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Memuat status...</span></span>
+          <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Sesi Presensi Berangkat</span></span>
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div id="cameraPlaceholder" class="camera-placeholder">
+          <div class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
-          <video id="cameraPreview" autoplay playsinline style="display:none"></video>
-          <img id="photoPreview" style="display:none" />
         </div>
         <div class="camera-controls">
           <div class="input">
@@ -243,7 +241,9 @@
           </select>
         </div>
         <div id="logList" style="display:grid; gap:8px; max-height:400px; overflow-y:auto">
-          <div style="padding: 20px; text-align: center; opacity: 0.7;">Memuat riwayat presensi...</div>
+          <div class="riwayat-item">
+            Memuat riwayat presensi...
+          </div>
         </div>
       </section>
     </div>
@@ -271,8 +271,8 @@
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama lengkap" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama lengkap" value="" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
         <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
@@ -288,7 +288,11 @@
       <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="dlg-body" id="notifList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div style="padding: 20px; text-align: center; opacity: 0.7;">Memuat notifikasi...</div>
+      <div class="notif-item">
+        <div class="notif-content">
+          <div style="font-weight:600">Tidak ada notifikasi</div>
+        </div>
+      </div>
     </div>
   </dialog>
 
@@ -321,7 +325,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
