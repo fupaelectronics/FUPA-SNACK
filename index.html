@@ -142,74 +142,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="app.js"></script>
   <script>
-    // Firebase config
-    const firebaseConfig = {
-      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
-      authDomain: "fupa-snack.firebaseapp.com",
-      projectId: "fupa-snack",
-      storageBucket: "fupa-snack.firebasestorage.app",
-      messagingSenderId: "972524876738",
-      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
-    };
-
-    // Inisialisasi Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    // UID roles
-    const ADMIN_UIDS = [
-      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
-      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-    ];
-
-    const KARYAWAN_UIDS = [
-      "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
-      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
-      "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
-      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
-      "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
-      "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
-      "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
-      "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
-      "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
-      "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
-      "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
-    ];
-
-    // Util UI
-    const $ = (sel) => document.querySelector(sel);
-    const showToast = (msg, type = 'info') => {
-      const t = $("#toast");
-      if (!t) return alert(msg);
-      
-      const colors = {
-        success: '#2e7d32',
-        error: '#c62828',
-        warning: '#f9a825',
-        info: '#111'
-      };
-      
-      t.style.backgroundColor = colors[type] || colors.info;
-      t.textContent = msg;
-      t.style.display = "block";
-      setTimeout(() => { t.style.display = "none"; }, 3000);
-    };
-
-    // Get user role from UID
-    const getUserRole = (uid) => {
-      if (ADMIN_UIDS.includes(uid)) return 'admin';
-      if (KARYAWAN_UIDS.includes(uid)) return 'karyawan';
-      return null;
-    };
-
     // Redirect berdasarkan role
     function redirectByRole(uid) {
-      const role = getUserRole(uid);
-      if (role === 'admin') {
+      if (ADMIN_UIDS.has(uid)) {
         return "admin.html";
-      } else if (role === 'karyawan') {
+      } else if (KARYAWAN_UIDS.has(uid)) {
         return "karyawan.html";
       } else {
         auth.signOut();
@@ -236,7 +176,7 @@
       const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        showToast("Isi email dan kata sandi.", 'error'); 
+        showToast("Isi email dan kata sandi."); 
         return; 
       }
       
@@ -251,16 +191,19 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
-        // Cek role
-        const role = getUserRole(user.uid);
-        if (!role) {
-          await auth.signOut();
-          showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
-          loginBtn.disabled = false;
-          loginText.textContent = "Masuk";
-          loginSpinner.style.display = "none";
-          successMessage.style.display = "none";
-          return;
+        // Cek apakah data user sudah lengkap
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        
+        if (!userDoc.exists) {
+          // Buat data user baru jika belum ada
+          await db.collection('users').doc(user.uid).set({
+            email: user.email,
+            nama: '',
+            alamat: '',
+            foto: '',
+            role: ADMIN_UIDS.has(user.uid) ? 'admin' : 'karyawan',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
         }
         
         // Tampilkan pesan sukses
@@ -275,7 +218,7 @@
             window.location.href = redirectPage;
           }, 1500);
         } else {
-          showToast("Akses ditolak: akun belum diberi peran yang benar.", 'error');
+          showToast("Akses ditolak: akun belum diberi peran yang benar.");
           await auth.signOut();
           loginBtn.disabled = false;
           loginText.textContent = "Masuk";
@@ -290,9 +233,9 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          showToast("Email atau kata sandi salah.", 'error');
+          showToast("Email atau kata sandi salah.");
         } else {
-          showToast("Gagal masuk. Periksa koneksi internet Anda.", 'error');
+          showToast("Gagal masuk. Periksa koneksi internet Anda.");
         }
       }
     };
@@ -304,18 +247,15 @@
       }
     });
 
-    // Register service worker
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then((registration) => {
-            console.log('SW registered: ', registration);
-          })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
-          });
-      });
-    }
+    // Cek apakah user sudah login
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        const redirectPage = redirectByRole(user.uid);
+        if (redirectPage && window.location.pathname.endsWith('index.html')) {
+          window.location.href = redirectPage;
+        }
+      }
+    });
   </script>
 </body>
 </html>
