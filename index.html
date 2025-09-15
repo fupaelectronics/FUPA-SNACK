@@ -23,7 +23,7 @@
       min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply; filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
       background:
         radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
         radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
@@ -143,7 +143,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script>
-    // Firebase config
+    // Firebase config dari data kunci
     const firebaseConfig = {
       apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
       authDomain: "fupa-snack.firebaseapp.com",
@@ -158,7 +158,27 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Fungsi utilitas
+    // UID roles dari data kunci
+    const ADMIN_UIDS = new Set([
+      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+    ]);
+
+    const KARYAWAN_UIDS = new Set([
+      "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
+      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
+      "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
+      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
+      "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
+      "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
+      "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
+      "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
+      "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
+      "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
+      "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
+    ]);
+
+    // Util UI
     const $ = (sel) => document.querySelector(sel);
     const toast = (msg) => {
       const t = $("#toast");
@@ -169,43 +189,13 @@
     };
 
     // Redirect berdasarkan role
-    async function redirectByRole(uid) {
-      try {
-        const doc = await db.collection('users').doc(uid).get();
-        
-        if (doc.exists) {
-          const userData = doc.data();
-          
-          if (userData.role === 'admin') {
-            return "admin.html";
-          } else if (userData.role === 'karyawan') {
-            return "karyawan.html";
-          }
-        }
-        
-        // Jika data user tidak ditemukan, buat data user default
-        const emailPrefix = auth.currentUser.email.split('@')[0];
-        const defaultProfile = {
-          uid: uid,
-          nama: emailPrefix,
-          alamat: 'Fupa',
-          email: auth.currentUser.email,
-          role: uid === 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
-                uid === 'uB2XsyM6fXUj493cRlHCqpe2fxH3' ? 'admin' : 'karyawan',
-          fotoProfil: null,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        await db.collection('users').doc(uid).set(defaultProfile);
-        
-        if (defaultProfile.role === 'admin') {
-          return "admin.html";
-        } else {
-          return "karyawan.html";
-        }
-      } catch (error) {
-        console.error('Error getting user role:', error);
-        toast('Gagal memeriksa role pengguna');
+    function redirectByRole(uid) {
+      if (ADMIN_UIDS.has(uid)) {
+        return "admin.html";
+      } else if (KARYAWAN_UIDS.has(uid)) {
+        return "karyawan.html";
+      } else {
+        auth.signOut();
         return null;
       }
     }
@@ -250,7 +240,7 @@
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        const redirectPage = await redirectByRole(user.uid);
+        const redirectPage = redirectByRole(user.uid);
         if (redirectPage) {
           setTimeout(() => {
             window.location.href = redirectPage;
@@ -285,15 +275,41 @@
       }
     });
 
-    // Cek apakah user sudah login
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        // Jika sudah login, redirect berdasarkan role
-        const redirectPage = await redirectByRole(user.uid);
-        if (redirectPage && !window.location.pathname.includes(redirectPage)) {
-          window.location.href = redirectPage;
+    // Auto create users jika belum ada
+    async function createUserIfNotExists(uid, email, nama, role) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+          await db.collection('users').doc(uid).set({
+            email: email,
+            nama: nama,
+            alamat: 'Fupa',
+            role: role
+          });
         }
+      } catch (error) {
+        console.error("Error creating user:", error);
       }
+    }
+
+    // Buat semua user dari data kunci
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Admin users
+      await createUserIfNotExists('O1SJ7hYop3UJjDcsA3JqT29aapI3', 'karomi@fupa.id', 'karomi', 'admin');
+      await createUserIfNotExists('uB2XsyM6fXUj493cRlHCqpe2fxH3', 'annisa@fupa.id', 'annisa', 'admin');
+      
+      // Karyawan users
+      await createUserIfNotExists('7NJ9xoMgQlUbi68CMQWFN5bYvF62', 'x@fupa.id', 'x', 'karyawan');
+      await createUserIfNotExists('Jn7Fghq1fkNGx8f0z8sTGkxH94E2', 'cabang1@fupa.id', 'cabang1', 'karyawan');
+      await createUserIfNotExists('vB3i5h6offMxQslKf2U0J1ElpWS2', 'cabang2@fupa.id', 'cabang2', 'karyawan');
+      await createUserIfNotExists('tIGmvfnqtxf5QJlfPUy9O1uzHJ73', 'cabang3@fupa.id', 'cabang3', 'karyawan');
+      await createUserIfNotExists('zl7xjZaI6BdCLT7Z2WA34oTcFV42', 'cabang4@fupa.id', 'cabang4', 'karyawan');
+      await createUserIfNotExists('NainrtLo3BWRSJKImgIBYNLJEIv2', 'cabang5@fupa.id', 'cabang5', 'karyawan');
+      await createUserIfNotExists('9Y9s8E23TNbMlO9vZBVKQCGGG0Z2', 'cabang6@fupa.id', 'cabang6', 'karyawan');
+      await createUserIfNotExists('dDq2zTPs12Tn2v0Zh4IdObDcD7g2', 'cabang7@fupa.id', 'cabang7', 'karyawan');
+      await createUserIfNotExists('Tkqf05IzI9UTvy4BF0nWtZwbz8j2', 'cabang8@fupa.id', 'cabang8', 'karyawan');
+      await createUserIfNotExists('pMbjHKjsZLWtNHi7PTc8cDJ254w2', 'cabang9@fupa.id', 'cabang9', 'karyawan');
+      await createUserIfNotExists('G0qTjLBc6MeRMPziNTzIT6N32ZM2', 'cabang10@fupa.id', 'cabang10', 'karyawan');
     });
   </script>
 </body>
