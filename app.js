@@ -1,4 +1,4 @@
-// Inisialisasi Firebase
+// Konfigurasi Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
   authDomain: "fupa-snack.firebaseapp.com",
@@ -12,21 +12,18 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 // Variabel global
 let currentUser = null;
-let userProfile = null;
-let presenceStatus = null;
-let cameraStream = null;
-let capturedPhoto = null;
-let deferredPrompt = null;
+let userData = null;
+let stream = null;
+let currentPhoto = null;
 
-// Fungsi utilitas
+// Elemen UI umum
 const $ = (sel) => document.querySelector(sel);
-const showToast = (message, type = 'info') => {
-  const toast = $('#toast');
-  if (!toast) return;
+const toast = (msg, type = 'info') => {
+  const t = $("#toast");
+  if (!t) return alert(msg);
   
   const colors = {
     success: '#2e7d32',
@@ -35,1020 +32,121 @@ const showToast = (message, type = 'info') => {
     info: '#111'
   };
   
-  toast.style.backgroundColor = colors[type] || colors.info;
-  toast.textContent = message;
-  toast.style.display = 'block';
-  setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  t.style.backgroundColor = colors[type] || colors.info;
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 3000);
 };
 
-// Format tanggal Indonesia
-const formatDate = (timestamp, withTime = true) => {
-  if (!timestamp) return '-';
-  
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  const options = { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  };
-  
-  let formatted = date.toLocaleDateString('id-ID', options);
-  
-  if (withTime) {
-    const time = date.toLocaleTimeString('id-ID', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
-    formatted += ` - ${time}`;
-  }
-  
-  return formatted;
+// Fungsi untuk memeriksa role admin
+const isAdmin = (uid) => {
+  const adminUids = ['O1SJ7hYop3UJjDcsA3JqT29aapI3', 'uB2XsyM6fXUj493cRlHCqpe2fxH3'];
+  return adminUids.includes(uid);
 };
 
-// Kompres gambar sebelum upload ke Cloudinary
-const compressImage = (file, maxSizeKB = 10) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Hitung ukuran baru dengan menjaga aspect ratio
-        let width = img.width;
-        let height = img.height;
-        const maxDimension = 800;
-        
-        if (width > height) {
-          if (width > maxDimension) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          }
-        } else {
-          if (height > maxDimension) {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Gambar ulang dengan kualitas lebih rendah
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Konversi ke blob dengan kualitas yang disesuaikan
-        canvas.toBlob((blob) => {
-          if (blob.size > maxSizeKB * 1024) {
-            // Jika masih terlalu besar, coba lagi dengan kualitas lebih rendah
-            canvas.toBlob(
-              (newBlob) => resolve(newBlob),
-              'image/jpeg',
-              0.5
-            );
-          } else {
-            resolve(blob);
-          }
-        }, 'image/jpeg', 0.7);
-      };
-      
-      img.onerror = (error) => {
-        reject(error);
-      };
-    };
-    
-    reader.onerror = (error) => {
-      reject(error);
-    };
-  });
-};
-
-// Upload gambar ke Cloudinary
-const uploadToCloudinary = (file) => {
-  return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', 'FupaSnack');
-    formData.append('cloud_name', 'da7idhh4f');
-    
-    fetch('https://api.cloudinary.com/v1_1/da7idhh4f/image/upload', {
-      method: 'POST',
-      body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.secure_url) {
-        resolve(data.secure_url);
-      } else {
-        reject(new Error('Upload gagal'));
-      }
-    })
-    .catch(error => {
-      reject(error);
-    });
-  });
-};
-
-// Deteksi status presensi berdasarkan waktu
-const getPresenceStatus = () => {
-  const now = new Date();
-  const day = now.getDay(); // 0 = Minggu, 1 = Senin, ..., 6 = Sabtu
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  // Hari Minggu adalah libur
-  if (day === 0) {
-    return { status: 'Libur', session: null };
-  }
-  
-  // Shift pagi: berangkat 05:30-06:00, pulang 10:00-11:00
-  // Shift sore: berangkat 14:00-14:30, pulang 17:30-18:00
-  
-  const currentTime = hour * 60 + minute;
-  
-  // Cek sesi berangkat pagi
-  if (currentTime >= 330 && currentTime <= 360) { // 05:30-06:00
-    return { status: 'Tepat Waktu', session: 'berangkat', shift: 'pagi' };
-  }
-  if (currentTime > 360 && currentTime <= 380) { // 06:01-06:20 (toleransi 20 menit)
-    return { status: 'Terlambat', session: 'berangkat', shift: 'pagi' };
-  }
-  
-  // Cek sesi pulang pagi
-  if (currentTime >= 600 && currentTime <= 660) { // 10:00-11:00
-    return { status: 'Tepat Waktu', session: 'pulang', shift: 'pagi' };
-  }
-  if (currentTime > 660 && currentTime <= 680) { // 11:01-11:20 (toleransi 20 menit)
-    return { status: 'Terlambat', session: 'pulang', shift: 'pagi' };
-  }
-  
-  // Cek sesi berangkat sore
-  if (currentTime >= 840 && currentTime <= 870) { // 14:00-14:30
-    return { status: 'Tepat Waktu', session: 'berangkat', shift: 'sore' };
-  }
-  if (currentTime > 870 && currentTime <= 890) { // 14:31-14:50 (toleransi 20 menit)
-    return { status: 'Terlambat', session: 'berangkat', shift: 'sore' };
-  }
-  
-  // Cek sesi pulang sore
-  if (currentTime >= 1050 && currentTime <= 1080) { // 17:30-18:00
-    return { status: 'Tepat Waktu', session: 'pulang', shift: 'sore' };
-  }
-  if (currentTime > 1080 && currentTime <= 1100) { // 18:01-18:20 (toleransi 20 menit)
-    return { status: 'Terlambat', session: 'pulang', shift: 'sore' };
-  }
-  
-  // Di luar sesi presensi
-  return { status: 'Di luar sesi presensi', session: null };
-};
-
-// Cek apakah sudah melakukan presensi hari ini
-const checkTodayPresence = async (session) => {
-  if (!currentUser) return false;
-  
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    const presenceRef = db.collection('presensi');
-    const query = presenceRef
-      .where('uid', '==', currentUser.uid)
-      .where('waktu', '>=', today)
-      .where('waktu', '<', tomorrow)
-      .where('jenis', '==', session);
-    
-    const snapshot = await query.get();
-    return !snapshot.empty;
-  } catch (error) {
-    console.error('Error checking today presence:', error);
-    return false;
-  }
-};
-
-// Muat data profil pengguna
-const loadUserProfile = async () => {
-  if (!currentUser) return;
-  
-  try {
-    const doc = await db.collection('users').doc(currentUser.uid).get();
-    
-    if (doc.exists) {
-      userProfile = doc.data();
-      
-      // Update UI dengan data profil
-      if ($('#nama')) $('#nama').value = userProfile.nama || '';
-      if ($('#alamat')) $('#alamat').value = userProfile.alamat || '';
-      if ($('#pfp')) {
-        $('#pfp').src = userProfile.fotoProfil || 
-          `https://api.dicebear.com/7.x/initials/svg?seed=${userProfile.nama || 'User'}&backgroundColor=ffb300,ffd54f&radius=20`;
-      }
-      
-      // Jika data profil kosong, tampilkan popup
-      if ((!userProfile.nama || !userProfile.alamat) && $('#profileDlg')) {
-        $('#profileDlg').showModal();
-      }
-    } else {
-      // Buat profil default jika belum ada
-      const emailPrefix = currentUser.email.split('@')[0];
-      const defaultProfile = {
-        uid: currentUser.uid,
-        nama: emailPrefix,
-        alamat: 'Fupa',
-        email: currentUser.email,
-        role: currentUser.uid === 'O1SJ7hYop3UJjDcsA3JqT29aapI3' || 
-              currentUser.uid === 'uB2XsyM6fXUj493cRlHCqpe2fxH3' ? 'admin' : 'karyawan',
-        fotoProfil: null,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
-      
-      await db.collection('users').doc(currentUser.uid).set(defaultProfile);
-      userProfile = defaultProfile;
-      
-      // Tampilkan popup untuk melengkapi data
-      if ($('#profileDlg')) {
-        $('#profileDlg').showModal();
-      }
-    }
-  } catch (error) {
-    console.error('Error loading user profile:', error);
-    showToast('Gagal memuat profil', 'error');
-  }
-};
-
-// Muat riwayat presensi
-const loadPresenceHistory = async (limit = 20) => {
-  if (!currentUser) return;
-  
-  try {
-    let query = db.collection('presensi')
-      .orderBy('waktu', 'desc');
-    
-    // Jika user adalah karyawan, filter hanya presensinya sendiri
-    if (userProfile.role === 'karyawan') {
-      query = query.where('uid', '==', currentUser.uid);
-    }
-    
-    // Terapkan limit jika bukan 'all'
-    if (limit !== 'all') {
-      query = query.limit(parseInt(limit));
-    }
-    
-    const snapshot = await query.get();
-    const historyList = $('#logList') || $('#tableBody');
-    
-    if (!historyList) return;
-    
-    // Kosongkan daftar
-    historyList.innerHTML = '';
-    
-    if (snapshot.empty) {
-      historyList.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.7;">Tidak ada riwayat presensi</div>';
-      return;
-    }
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const item = document.createElement('div');
-      
-      if (userProfile.role === 'karyawan') {
-        item.className = 'riwayat-item';
-        item.innerHTML = `
-          <div class="riwayat-jenis">
-            <span class="material-symbols-rounded">${data.jenis === 'berangkat' ? 'login' : 'logout'}</span>
-            ${data.jenis === 'berangkat' ? 'Berangkat' : 'Pulang'}
-            <span class="status ${data.status === 'Tepat Waktu' ? 's-good' : data.status === 'Terlambat' ? 's-warn' : 's-bad'}" style="margin-left:auto;font-size:12px">
-              ${data.status.toLowerCase()}
-            </span>
-          </div>
-          <div class="riwayat-time">
-            ${formatDate(data.waktu)}
-          </div>
-        `;
-      } else {
-        // Tampilan untuk admin (dalam tabel)
-        item.className = 'presence-row';
-        item.innerHTML = `
-          <tr>
-            <td>${formatDate(data.waktu, false)}<br>${data.waktu.toDate().toLocaleTimeString('id-ID')}</td>
-            <td>${data.nama}</td>
-            <td>${data.jenis === 'berangkat' ? 'Berangkat' : 'Pulang'}</td>
-            <td><span class="status ${data.status === 'Tepat Waktu' ? 's-good' : data.status === 'Terlambat' ? 's-warn' : 's-bad'}">${data.status.toLowerCase()}</span></td>
-            <td>${data.koordinat || '-'}</td>
-            <td>${data.foto ? `<a href="${data.foto}" target="_blank">Lihat Foto</a>` : '-'}</td>
-          </tr>
-        `;
-      }
-      
-      historyList.appendChild(item);
-    });
-  } catch (error) {
-    console.error('Error loading presence history:', error);
-    showToast('Gagal memuat riwayat presensi', 'error');
-  }
-};
-
-// Muat notifikasi
-const loadNotifications = async () => {
-  if (!currentUser) return;
-  
-  try {
-    let query;
-    
-    if (userProfile.role === 'admin') {
-      // Admin melihat semua notifikasi cuti
-      query = db.collection('notifikasi')
-        .where('tipe', '==', 'cuti')
-        .orderBy('waktu', 'desc');
-    } else {
-      // Karyawan melihat notifikasi untuk dirinya
-      query = db.collection('notifikasi')
-        .where('targetUID', '==', currentUser.uid)
-        .orderBy('waktu', 'desc');
-    }
-    
-    const snapshot = await query.get();
-    const notifList = $('#notifList') || $('#cutiList');
-    
-    if (!notifList) return;
-    
-    // Kosongkan daftar
-    notifList.innerHTML = '';
-    
-    if (snapshot.empty) {
-      notifList.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.7;">Tidak ada notifikasi</div>';
-      
-      // Update badge notifikasi
-      if ($('#notifBadge')) {
-        $('#notifBadge').style.display = 'none';
-      }
-      
-      return;
-    }
-    
-    // Update badge notifikasi
-    if ($('#notifBadge')) {
-      $('#notifBadge').textContent = snapshot.size;
-      $('#notifBadge').style.display = snapshot.size > 0 ? 'grid' : 'none';
-    }
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const item = document.createElement('div');
-      
-      if (userProfile.role === 'admin') {
-        // Tampilan notifikasi untuk admin (permintaan cuti)
-        item.className = 'cuti-item';
-        item.innerHTML = `
-          <div><strong>${data.nama}</strong> mengajukan cuti <strong>${data.jenis}</strong></div>
-          <div>Tanggal: ${formatDate(data.tanggal, false)}</div>
-          <div>Keterangan: ${data.keterangan || '-'}</div>
-          <div style="font-size:12px;opacity:0.7">Diajukan pada: ${formatDate(data.waktu)}</div>
-          <div class="cuti-actions">
-            <button class="btn approve-btn" data-id="${doc.id}" data-uid="${data.uid}" data-nama="${data.nama}" data-jenis="${data.jenis}" data-tanggal="${data.tangcal}" data-keterangan="${data.keterangan || ''}" style="background:var(--good)">
-              <span class="material-symbols-rounded">check</span> Setujui
-            </button>
-            <button class="btn reject-btn" data-id="${doc.id}" data-uid="${data.uid}" style="background:var(--bad)">
-              <span class="material-symbols-rounded">close</span> Tolak
-            </button>
-          </div>
-        `;
-      } else {
-        // Tampilan notifikasi untuk karyawan
-        item.className = 'notif-item';
-        
-        let actionButton = '';
-        if (data.tipe === 'cuti' && data.status === 'disetujui') {
-          actionButton = `
-            <button class="btn create-entry-btn" data-tanggal="${data.tanggal}" data-jenis="${data.jenis}" style="background:var(--good); margin-left: 8px;">
-              <span class="material-symbols-rounded">add</span> Buat Entri
-            </button>
-          `;
-        }
-        
-        item.innerHTML = `
-          <div class="notif-content">
-            <div style="font-weight:600">${data.pesan}</div>
-            <div style="font-size:12px;opacity:0.7">${formatDate(data.waktu)}</div>
-          </div>
-          <div class="notif-actions">
-            ${actionButton}
-            <button class="icon-btn mark-read" data-id="${doc.id}" title="Tandai sudah dibaca" style="font-size:16px">
-              <span class="material-symbols-rounded">check_circle</span>
-            </button>
-          </div>
-        `;
-      }
-      
-      notifList.appendChild(item);
-    });
-    
-    // Tambahkan event listener untuk button notifikasi
-    setTimeout(() => {
-      // Untuk admin: approve/reject cuti
-      document.querySelectorAll('.approve-btn').forEach(btn => {
-        btn.addEventListener('click', handleApproveCuti);
-      });
-      
-      document.querySelectorAll('.reject-btn').forEach(btn => {
-        btn.addEventListener('click', handleRejectCuti);
-      });
-      
-      // Untuk karyawan: buat entri dan tandai sudah dibaca
-      document.querySelectorAll('.create-entry-btn').forEach(btn => {
-        btn.addEventListener('click', handleCreateEntry);
-      });
-      
-      document.querySelectorAll('.mark-read').forEach(btn => {
-        btn.addEventListener('click', handleMarkAsRead);
-      });
-    }, 100);
-  } catch (error) {
-    console.error('Error loading notifications:', error);
-    showToast('Gagal memuat notifikasi', 'error');
-  }
-};
-
-// Handle approve cuti
-const handleApproveCuti = async (e) => {
-  const id = e.target.closest('.approve-btn').dataset.id;
-  const uid = e.target.closest('.approve-btn').dataset.uid;
-  const nama = e.target.closest('.approve-btn').dataset.nama;
-  const jenis = e.target.closest('.approve-btn').dataset.jenis;
-  const tanggal = e.target.closest('.approve-btn').dataset.tanggal;
-  const keterangan = e.target.closest('.approve-btn').dataset.keterangan;
-  
-  try {
-    // Update status cuti
-    await db.collection('cuti').doc(id).update({
-      status: 'disetujui',
-      diprosesPada: firebase.firestore.FieldValue.serverTimestamp(),
-      diprosesOleh: currentUser.uid
-    });
-    
-    // Buat notifikasi untuk karyawan
-    await db.collection('notifikasi').add({
-      tipe: 'cuti',
-      targetUID: uid,
-      pesan: `Cuti ${jenis} Anda pada ${formatDate(new Date(tanggal), false)} telah disetujui`,
-      waktu: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'disetujui',
-      tanggal: new Date(tanggal),
-      jenis: jenis,
-      keterangan: keterangan
-    });
-    
-    // Hapus notifikasi permintaan cuti
-    await db.collection('notifikasi').doc(id).delete();
-    
-    showToast('Cuti disetujui', 'success');
-    loadNotifications();
-  } catch (error) {
-    console.error('Error approving cuti:', error);
-    showToast('Gagal menyetujui cuti', 'error');
-  }
-};
-
-// Handle reject cuti
-const handleRejectCuti = async (e) => {
-  const id = e.target.closest('.reject-btn').dataset.id;
-  const uid = e.target.closest('.reject-btn').dataset.uid;
-  
-  try {
-    // Update status cuti
-    await db.collection('cuti').doc(id).update({
-      status: 'ditolak',
-      diprosesPada: firebase.firestore.FieldValue.serverTimestamp(),
-      diprosesOleh: currentUser.uid
-    });
-    
-    // Buat notifikasi untuk karyawan
-    await db.collection('notifikasi').add({
-      tipe: 'cuti',
-      targetUID: uid,
-      pesan: 'Cuti Anda ditolak',
-      waktu: firebase.firestore.FieldValue.serverTimestamp(),
-      status: 'ditolak'
-    });
-    
-    // Hapus notifikasi permintaan cuti
-    await db.collection('notifikasi').doc(id).delete();
-    
-    showToast('Cuti ditolak', 'success');
-    loadNotifications();
-  } catch (error) {
-    console.error('Error rejecting cuti:', error);
-    showToast('Gagal menolak cuti', 'error');
-  }
-};
-
-// Handle create entry dari notifikasi cuti yang disetujui
-const handleCreateEntry = async (e) => {
-  const tanggal = e.target.closest('.create-entry-btn').dataset.tanggal;
-  const jenisCuti = e.target.closest('.create-entry-btn').dataset.jenis;
-  
-  try {
-    // Buat entri presensi untuk cuti
-    await db.collection('presensi').add({
-      uid: currentUser.uid,
-      nama: userProfile.nama,
-      waktu: new Date(tanggal),
-      jenis: 'cuti',
-      status: jenisCuti === 'sakit' ? 'Sakit' : 'Izin',
-      koordinat: '-',
-      foto: null,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    showToast('Entri presensi cuti berhasil dibuat', 'success');
-    
-    // Muat ulang riwayat presensi
-    loadPresenceHistory($('#historyFilter') ? $('#historyFilter').value : 20);
-  } catch (error) {
-    console.error('Error creating presence entry:', error);
-    showToast('Gagal membuat entri presensi', 'error');
-  }
-};
-
-// Handle mark as read
-const handleMarkAsRead = async (e) => {
-  const id = e.target.closest('.mark-read').dataset.id;
-  
-  try {
-    // Hapus notifikasi
-    await db.collection('notifikasi').doc(id).delete();
-    
-    showToast('Notifikasi ditandai sudah dibaca', 'success');
-    loadNotifications();
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    showToast('Gagal menandai notifikasi', 'error');
-  }
-};
-
-// Inisialisasi kamera
-const initCamera = async () => {
-  if (!($('#cameraPreview') || $('#cameraPlaceholder'))) return;
-  
-  try {
-    // Hentikan stream kamera jika sudah ada
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-    }
-    
-    // Dapatkan akses ke kamera
-    cameraStream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: 'user' }, 
-      audio: false 
-    });
-    
-    // Tampilkan preview kamera
-    if ($('#cameraPreview')) {
-      $('#cameraPreview').srcObject = cameraStream;
-      $('#cameraPreview').style.display = 'block';
-      $('#cameraPlaceholder').style.display = 'none';
-    }
-  } catch (error) {
-    console.error('Error accessing camera:', error);
-    showToast('Tidak dapat mengakses kamera', 'error');
-    
-    if ($('#cameraPlaceholder')) {
-      $('#cameraPlaceholder').innerHTML = `
-        <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
-        <div style="margin-top: 10px;">Kamera tidak dapat diakses</div>
-      `;
-    }
-  }
-};
-
-// Ambil foto dari kamera
-const capturePhoto = () => {
-  if (!cameraStream || !($('#cameraPreview') && $('#photoPreview'))) return;
-  
-  try {
-    const video = $('#cameraPreview');
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    
-    // Set ukuran canvas sesuai video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    // Gambar frame video ke canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Konversi canvas ke data URL
-    capturedPhoto = canvas.toDataURL('image/jpeg');
-    
-    // Tampilkan preview foto
-    $('#photoPreview').src = capturedPhoto;
-    $('#photoPreview').style.display = 'block';
-    $('#cameraPreview').style.display = 'none';
-    
-    showToast('Foto berhasil diambil', 'success');
-  } catch (error) {
-    console.error('Error capturing photo:', error);
-    showToast('Gagal mengambil foto', 'error');
-  }
-};
-
-// Upload presensi
-const uploadPresence = async () => {
-  if (!currentUser || !capturedPhoto || !($('#jenis'))) return;
-  
-  const jenis = $('#jenis').value;
-  const statusInfo = getPresenceStatus();
-  
-  // Validasi sesi presensi
-  if (statusInfo.status === 'Libur') {
-    showToast('Hari ini libur, tidak dapat melakukan presensi', 'error');
-    return;
-  }
-  
-  if (statusInfo.status === 'Di luar sesi presensi') {
-    showToast('Di luar sesi presensi', 'error');
-    return;
-  }
-  
-  if (statusInfo.session !== jenis) {
-    showToast(`Saat ini bukan sesi presensi ${jenis}`, 'error');
-    return;
-  }
-  
-  // Cek apakah sudah melakukan presensi untuk sesi ini hari ini
-  const alreadyPresence = await checkTodayPresence(jenis);
-  if (alreadyPresence) {
-    showToast(`Anda sudah melakukan presensi ${jenis} hari ini`, 'error');
-    return;
-  }
-  
-  try {
-    // Tampilkan loading
-    $('#uploadBtn').disabled = true;
-    $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
-    
-    // Dapatkan koordinat
-    let coordinates = '-';
+// onAuthStateChanged: dipindahkan ke index.html
+// Di app.js kita hanya memastikan user sudah login
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = user;
+    // Ambil data user dari Firestore
     try {
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
-        });
-      });
-      
-      coordinates = `${position.coords.latitude}, ${position.coords.longitude}`;
-      if ($('#locText')) {
-        $('#locText').textContent = coordinates;
+      const doc = await db.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        userData = doc.data();
+        // Jika data user kosong, tampilkan popup isi profil
+        if (!userData.nama || !userData.alamat) {
+          showProfileDialog();
+        }
+        // Load data sesuai halaman
+        if (window.location.pathname.endsWith('karyawan.html')) {
+          loadKaryawanPage();
+        } else if (window.location.pathname.endsWith('admin.html')) {
+          loadAdminPage();
+        }
+      } else {
+        // Jika tidak ada data, buat data user default
+        userData = {
+          email: user.email,
+          nama: user.email.split('@')[0],
+          alamat: 'Fupa',
+          role: isAdmin(user.uid) ? 'admin' : 'karyawan'
+        };
+        await db.collection('users').doc(user.uid).set(userData);
+        showProfileDialog();
       }
     } catch (error) {
-      console.error('Error getting location:', error);
-      showToast('Tidak dapat mendapatkan lokasi', 'warning');
+      console.error("Error getting user document:", error);
     }
-    
-    // Konversi data URL ke blob
-    const response = await fetch(capturedPhoto);
-    const blob = await response.blob();
-    
-    // Kompres gambar
-    const compressedBlob = await compressImage(blob, 10);
-    
-    // Upload ke Cloudinary
-    const fotoUrl = await uploadToCloudinary(compressedBlob);
-    
-    // Simpan data presensi ke Firestore
-    await db.collection('presensi').add({
-      uid: currentUser.uid,
-      nama: userProfile.nama,
-      waktu: firebase.firestore.FieldValue.serverTimestamp(),
-      jenis: jenis,
-      status: statusInfo.status,
-      koordinat: coordinates,
-      foto: fotoUrl,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    // Buat notifikasi untuk admin (jika karyawan)
-    if (userProfile.role === 'karyawan') {
-      await db.collection('notifikasi').add({
-        tipe: 'presensi',
-        targetRole: 'admin',
-        pesan: `${userProfile.nama} telah melakukan presensi ${jenis}`,
-        waktu: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
-    
-    showToast('Presensi berhasil dicatat', 'success');
-    
-    // Reset UI
-    $('#uploadBtn').disabled = false;
-    $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-    $('#photoPreview').style.display = 'none';
-    
-    // Muat ulang kamera
-    initCamera();
-    
-    // Muat ulang riwayat presensi
-    loadPresenceHistory($('#historyFilter') ? $('#historyFilter').value : 20);
-  } catch (error) {
-    console.error('Error uploading presence:', error);
-    showToast('Gagal mengupload presensi', 'error');
-    
-    $('#uploadBtn').disabled = false;
-    $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+  } else {
+    // Jika tidak ada user, redirect ke index.html
+    window.location.href = 'index.html';
   }
-};
+});
 
-// Ajukan cuti
-const submitCuti = async () => {
-  if (!currentUser || !($('#cutiJenis') && $('#cutiTanggal'))) return;
-  
-  const jenis = $('#cutiJenis').value;
-  const tanggal = $('#cutiTanggal').value;
-  const keterangan = $('#cutiCatatan').value || '';
-  
-  if (!tanggal) {
-    showToast('Pilih tanggal cuti', 'error');
-    return;
+// Fungsi untuk menampilkan dialog profil
+function showProfileDialog() {
+  const profileDlg = document.getElementById('profileDlg');
+  if (profileDlg) {
+    $('#nama').value = userData.nama || '';
+    $('#alamat').value = userData.alamat || '';
+    profileDlg.showModal();
   }
-  
-  try {
-    // Tampilkan loading
-    $('#ajukanCutiBtn').disabled = true;
-    $('#ajukanCutiBtn').innerHTML = '<span class="spinner"></span> Mengajukan...';
-    
-    // Simpan data cuti
-    const cutiRef = await db.collection('cuti').add({
-      uid: currentUser.uid,
-      nama: userProfile.nama,
-      jenis: jenis,
-      tanggal: new Date(tanggal),
-      keterangan: keterangan,
-      status: 'pending',
-      diajukanPada: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    // Buat notifikasi untuk admin
-    await db.collection('notifikasi').add({
-      tipe: 'cuti',
-      targetRole: 'admin',
-      pesan: `${userProfile.nama} mengajukan cuti ${jenis}`,
-      waktu: firebase.firestore.FieldValue.serverTimestamp(),
-      cutiId: cutiRef.id,
-      uid: currentUser.uid,
-      nama: userProfile.nama,
-      jenis: jenis,
-      tanggal: new Date(tanggal),
-      keterangan: keterangan
-    });
-    
-    showToast('Cuti berhasil diajukan', 'success');
-    $('#cutiDlg').close();
-    
-    // Reset form
-    $('#cutiTanggal').value = '';
-    $('#cutiCatatan').value = '';
-    
-    $('#ajukanCutiBtn').disabled = false;
-    $('#ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
-  } catch (error) {
-    console.error('Error submitting cuti:', error);
-    showToast('Gagal mengajukan cuti', 'error');
-    
-    $('#ajukanCutiBtn').disabled = false;
-    $('#ajukanCutiBtn').innerHTML = '<span class="material-symbols-rounded">send</span> Ajukan';
-  }
-};
+}
 
-// Kirim pengumuman
-const sendAnnouncement = async () => {
-  if (!currentUser || !($('#announceText') && $('#announceTarget'))) return;
+// Fungsi untuk load halaman karyawan
+async function loadKaryawanPage() {
+  // Update waktu server
+  updateServerTime();
+  setInterval(updateServerTime, 1000);
   
-  const text = $('#announceText').value;
-  const target = $('#announceTarget').value;
+  // Ambil lokasi
+  getLocation();
   
-  if (!text) {
-    showToast('Tulis pengumuman terlebih dahulu', 'error');
-    return;
-  }
+  // Setup kamera
+  setupCamera();
   
-  try {
-    // Tampilkan loading
-    $('#sendAnnounce').disabled = true;
-    $('#sendAnnounce').innerHTML = '<span class="spinner"></span> Mengirim...';
-    
-    let targetUIDs = [];
-    
-    if (target === 'all') {
-      // Dapatkan semua UID karyawan
-      const snapshot = await db.collection('users')
-        .where('role', '==', 'karyawan')
-        .get();
-      
-      snapshot.forEach(doc => {
-        targetUIDs.push(doc.id);
-      });
-    } else {
-      // Dapatkan UID yang dipilih
-      const selectedUsers = document.querySelectorAll('.user-item.selected');
-      selectedUsers.forEach(user => {
-        targetUIDs.push(user.dataset.uid);
-      });
-    }
-    
-    // Kirim notifikasi ke setiap target
-    for (const uid of targetUIDs) {
-      await db.collection('notifikasi').add({
-        tipe: 'pengumuman',
-        targetUID: uid,
-        pesan: text,
-        waktu: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
-    
-    showToast('Pengumuman berhasil dikirim', 'success');
-    $('#announceText').value = '';
-    
-    $('#sendAnnounce').disabled = false;
-    $('#sendAnnounce').innerHTML = '<span class="material-symbols-rounded">send</span> Kirim';
-  } catch (error) {
-    console.error('Error sending announcement:', error);
-    showToast('Gagal mengirim pengumuman', 'error');
-    
-    $('#sendAnnounce').disabled = false;
-    $('#sendAnnounce').innerHTML = '<span class="material-symbols-rounded">send</span> Kirim';
-  }
-};
+  // Load riwayat presensi
+  loadPresenceHistory();
+  
+  // Event listeners
+  $('#snapBtn').addEventListener('click', takePicture);
+  $('#uploadBtn').addEventListener('click', uploadPresence);
+  $('#cutiFab').addEventListener('click', showCutiDialog);
+  $('#saveProfileBtn').addEventListener('click', saveProfile);
+  $('#logoutBtn').addEventListener('click', logout);
+  $('#historyFilter').addEventListener('change', loadPresenceHistory);
+  
+  // Periksa status presensi
+  checkPresenceStatus();
+}
 
-// Ekspor data ke CSV
-const exportToCSV = async () => {
-  if (!currentUser) return;
+// Fungsi untuk load halaman admin
+async function loadAdminPage() {
+  // Update waktu server
+  updateServerTime();
+  setInterval(updateServerTime, 1000);
   
-  try {
-    // Tampilkan loading
-    $('#exportCsv').disabled = true;
-    $('#exportCsv').innerHTML = '<span class="spinner"></span> Mengekspor...';
-    
-    // Dapatkan filter
-    const namaFilter = $('#fNama') ? $('#fNama').value : '';
-    const periode = $('#fPeriode') ? $('#fPeriode').value : 'harian';
-    const dari = $('#fDari') ? $('#fDari').value : '';
-    const sampai = $('#fSampai') ? $('#fSampai').value : '';
-    
-    // Buat query berdasarkan filter
-    let query = db.collection('presensi').orderBy('waktu', 'desc');
-    
-    // Filter nama
-    if (namaFilter) {
-      // Untuk filter nama, kita perlu mendapatkan semua data dulu lalu filter di client
-      // karena Firestore tidak mendukung pencarian substring yang efisien
-    }
-    
-    // Filter periode
-    if (periode !== 'all' && (dari || sampai)) {
-      let startDate, endDate;
-      
-      if (periode === 'custom' && dari && sampai) {
-        startDate = new Date(dari);
-        endDate = new Date(sampai);
-        endDate.setDate(endDate.getDate() + 1); // Sampai akhir hari
-      } else {
-        const now = new Date();
-        
-        switch (periode) {
-          case 'harian':
-            startDate = new Date(now);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(now);
-            endDate.setDate(endDate.getDate() + 1);
-            break;
-          case 'mingguan':
-            startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - startDate.getDay()); // Mulai minggu (Minggu)
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 7);
-            break;
-          case 'bulanan':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-            break;
-          case 'tahunan':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = new Date(now.getFullYear() + 1, 0, 1);
-            break;
-        }
-      }
-      
-      query = query.where('waktu', '>=', startDate).where('waktu', '<', endDate);
-    }
-    
-    // Dapatkan semua data presensi
-    const snapshot = await query.get();
-    
-    if (snapshot.empty) {
-      showToast('Tidak ada data untuk diekspor', 'warning');
-      $('#exportCsv').disabled = false;
-      $('#exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-      return;
-    }
-    
-    // Format data untuk CSV
-    let csvData = [];
-    const dataByUser = {};
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      
-      // Filter nama di client side jika diperlukan
-      if (namaFilter && !data.nama.toLowerCase().includes(namaFilter.toLowerCase())) {
-        return;
-      }
-      
-      if (!dataByUser[data.uid]) {
-        dataByUser[data.uid] = {
-          nama: data.nama,
-          presensi: []
-        };
-      }
-      
-      dataByUser[data.uid].presensi.push({
-        waktu: data.waktu.toDate(),
-        jenis: data.jenis,
-        status: data.status,
-        koordinat: data.koordinat
-      });
-    });
-    
-    // Urutkan berdasarkan nama (A-Z)
-    const sortedUsers = Object.values(dataByUser).sort((a, b) => 
-      a.nama.localeCompare(b.nama)
-    );
-    
-    // Buat header CSV
-    csvData.push(['Nama', 'Tanggal', 'Jam', 'Jenis', 'Status', 'Koordinat']);
-    
-    // Tambahkan data untuk setiap user
-    sortedUsers.forEach(user => {
-      // Urutkan presensi oleh tanggal (lama ke baru)
-      user.presensi.sort((a, b) => a.waktu - b.waktu);
-      
-      // Tambahkan data presensi
-      user.presensi.forEach(presensi => {
-        const date = presensi.waktu.toLocaleDateString('id-ID');
-        const time = presensi.waktu.toLocaleTimeString('id-ID');
-        
-        csvData.push([
-          user.nama,
-          date,
-          time,
-          presensi.jenis,
-          presensi.status,
-          presensi.koordinat
-        ]);
-      });
-      
-      // Tambahkan baris kosong antar user (konsistensi visual)
-      csvData.push([]);
-    });
-    
-    // Konversi ke string CSV
-    const csvString = csvData.map(row => 
-      row.map(field => `"${field}"`).join(',')
-    ).join('\n');
-    
-    // Buat blob dan download
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showToast('CSV berhasil diekspor', 'success');
-    $('#exportCsv').disabled = false;
-    $('#exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-  } catch (error) {
-    console.error('Error exporting CSV:', error);
-    showToast('Gagal mengekspor CSV', 'error');
-    
-    $('#exportCsv').disabled = false;
-    $('#exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
-  }
-};
+  // Load data presensi
+  loadAllPresences();
+  
+  // Event listeners
+  $('#applyFilter').addEventListener('click', loadAllPresences);
+  $('#exportCsv').addEventListener('click', exportToCSV);
+  $('#saveProfileBtn').addEventListener('click', saveProfile);
+  $('#logoutBtn').addEventListener('click', logout);
+  $('#createUserBtn').addEventListener('click', createUser);
+  $('#fPeriode').addEventListener('change', toggleCustomDateRange);
+  $('#announceTarget').addEventListener('change', toggleUserSelection);
+  $('#sendAnnounce').addEventListener('click', sendAnnouncement);
+  $('#notifBtn').addEventListener('click', loadCutiRequests);
+  $('#timeRulesFab').addEventListener('click', showTimeRulesDialog);
+  $('#saveRulesBtn').addEventListener('click', saveTimeRules);
+  $('#saveSchedule').addEventListener('click', saveScheduleSettings);
+}
 
-// Update waktu server secara real-time
-const updateServerTime = () => {
+// Fungsi untuk update waktu server
+function updateServerTime() {
   const now = new Date();
   const options = { 
     weekday: 'long', 
@@ -1059,265 +157,458 @@ const updateServerTime = () => {
     minute: '2-digit',
     second: '2-digit'
   };
-  
-  if ($('#serverTime')) {
-    $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
+  const timeElement = $('#serverTime');
+  if (timeElement) {
+    timeElement.textContent = now.toLocaleDateString('id-ID', options);
   }
-};
+}
 
-// Update status presensi secara real-time
-const updatePresenceStatus = () => {
-  const statusInfo = getPresenceStatus();
-  presenceStatus = statusInfo;
-  
-  if ($('#statusText') && $('#statusChip')) {
-    $('#statusText').textContent = statusInfo.status;
-    
-    // Update class status chip
-    $('#statusChip').className = 'status ';
-    if (statusInfo.status === 'Tepat Waktu') {
-      $('#statusChip').classList.add('s-good');
-    } else if (statusInfo.status === 'Terlambat') {
-      $('#statusChip').classList.add('s-warn');
-    } else if (statusInfo.status === 'Libur') {
-      $('#statusChip').classList.add('s-bad');
-    } else {
-      $('#statusChip').classList.add('s-bad');
-    }
+// Fungsi untuk mendapatkan lokasi
+function getLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        $('#locText').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        $('#locText').textContent = "Tidak dapat mengakses lokasi";
+      }
+    );
+  } else {
+    $('#locText').textContent = "Geolocation tidak didukung";
   }
-};
+}
 
-// Inisialisasi PWA
-const initPWA = () => {
-  // Event listener untuk beforeinstallprompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent the mini-infobar from appearing on mobile
-    e.preventDefault();
-    // Stash the event so it can be triggered later
-    deferredPrompt = e;
-    // Update UI notify the user they can install the PWA
-    if ($('#installBtn')) {
-      $('#installBtn').style.display = 'block';
-    }
-  });
-  
-  // Event listener untuk install button
-  if ($('#installBtn')) {
-    $('#installBtn').addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      
-      // Show the install prompt
-      deferredPrompt.prompt();
-      
-      // Wait for the user to respond to the prompt
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        showToast('Aplikasi berhasil diinstall', 'success');
-      }
-      
-      // We've used the prompt, and can't use it again, throw it away
-      deferredPrompt = null;
-      
-      // Hide the install button
-      if ($('#installBtn')) {
-        $('#installBtn').style.display = 'none';
-      }
-    });
-  }
-};
-
-// Inisialisasi aplikasi
-const initApp = () => {
-  // Update waktu server setiap detik
-  updateServerTime();
-  setInterval(updateServerTime, 1000);
-  
-  // Update status presensi setiap menit
-  updatePresenceStatus();
-  setInterval(updatePresenceStatus, 60000);
-  
-  // Inisialisasi PWA
-  initPWA();
-  
-  // Pantau perubahan autentikasi
-  auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      currentUser = user;
-      await loadUserProfile();
-      
-      // Muat data berdasarkan role
-      if (userProfile) {
-        await loadPresenceHistory($('#historyFilter') ? $('#historyFilter').value : 20);
-        await loadNotifications();
-        
-        // Inisialisasi kamera untuk karyawan
-        if (userProfile.role === 'karyawan') {
-          await initCamera();
-        }
-      }
-    } else {
-      // Redirect ke halaman login jika belum login
-      if (!window.location.pathname.includes('index.html')) {
-        window.location.href = 'index.html';
-      }
-    }
-  });
-  
-  // Event listener untuk UI elements
-  if ($('#snapBtn')) {
-    $('#snapBtn').addEventListener('click', capturePhoto);
-  }
-  
-  if ($('#uploadBtn')) {
-    $('#uploadBtn').addEventListener('click', uploadPresence);
-  }
-  
-  if ($('#saveProfileBtn')) {
-    $('#saveProfileBtn').addEventListener('click', async () => {
-      try {
-        await db.collection('users').doc(currentUser.uid).update({
-          nama: $('#nama').value,
-          alamat: $('#alamat').value,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        showToast('Profil berhasil disimpan', 'success');
-        $('#profileDlg').close();
-        
-        // Muat ulang profil
-        await loadUserProfile();
-      } catch (error) {
-        console.error('Error saving profile:', error);
-        showToast('Gagal menyimpan profil', 'error');
-      }
-    });
-  }
-  
-  if ($('#logoutBtn')) {
-    $('#logoutBtn').addEventListener('click', () => {
-      auth.signOut().then(() => {
-        showToast('Berhasil keluar', 'success');
-        window.location.href = 'index.html';
-      }).catch((error) => {
-        console.error('Error signing out:', error);
-        showToast('Gagal keluar', 'error');
-      });
-    });
-  }
-  
-  if ($('#ajukanCutiBtn')) {
-    $('#ajukanCutiBtn').addEventListener('click', submitCuti);
-  }
-  
-  if ($('#sendAnnounce')) {
-    $('#sendAnnounce').addEventListener('click', sendAnnouncement);
-  }
-  
-  if ($('#exportCsv')) {
-    $('#exportCsv').addEventListener('click', exportToCSV);
-  }
-  
-  if ($('#historyFilter')) {
-    $('#historyFilter').addEventListener('change', (e) => {
-      loadPresenceHistory(e.target.value);
-    });
-  }
-  
-  if ($('#fPeriode')) {
-    $('#fPeriode').addEventListener('change', (e) => {
-      if ($('#customDateRange')) {
-        $('#customDateRange').style.display = e.target.value === 'custom' ? 'flex' : 'none';
-      }
-    });
-  }
-  
-  if ($('#applyFilter')) {
-    $('#applyFilter').addEventListener('click', () => {
-      loadPresenceHistory($('#fShow') ? $('#fShow').value : 20);
-    });
-  }
-  
-  if ($('#announceTarget')) {
-    $('#announceTarget').addEventListener('change', (e) => {
-      if ($('#userSelection')) {
-        $('#userSelection').style.display = e.target.value === 'specific' ? 'block' : 'none';
-        
-        // Muat daftar user jika diperlukan
-        if (e.target.value === 'specific') {
-          loadUserList();
-        }
-      }
-    });
-  }
-  
-  // Event listener untuk dialog
-  if ($('#profileBtn')) {
-    $('#profileBtn').addEventListener('click', () => {
-      $('#profileDlg').showModal();
-    });
-  }
-  
-  if ($('#notifBtn')) {
-    $('#notifBtn').addEventListener('click', () => {
-      $('#notifDlg').showModal();
-    });
-  }
-  
-  if ($('#cutiFab')) {
-    $('#cutiFab').addEventListener('click', () => {
-      // Set default date to today
-      if ($('#cutiTanggal')) {
-        $('#cutiTanggal').valueAsDate = new Date();
-      }
-      $('#cutiDlg').showModal();
-    });
-  }
-  
-  if ($('#timeRulesFab')) {
-    $('#timeRulesFab').addEventListener('click', () => {
-      $('#timeRulesDlg').showModal();
-    });
-  }
-};
-
-// Muat daftar user untuk admin
-const loadUserList = async () => {
-  if (!currentUser || userProfile.role !== 'admin') return;
-  
+// Fungsi untuk setup kamera
+async function setupCamera() {
   try {
-    const snapshot = await db.collection('users')
-      .where('role', '==', 'karyawan')
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: "user" }, 
+      audio: false 
+    });
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    const cameraPlaceholder = $('.camera-placeholder');
+    if (cameraPlaceholder) {
+      cameraPlaceholder.innerHTML = '';
+      cameraPlaceholder.appendChild(video);
+    }
+  } catch (error) {
+    console.error("Error accessing camera:", error);
+    $('.camera-placeholder').innerHTML = `
+      <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
+      <div>Kamera tidak dapat diakses</div>
+    `;
+  }
+}
+
+// Fungsi untuk mengambil gambar
+function takePicture() {
+  if (!stream) {
+    toast('Kamera tidak siap', 'error');
+    return;
+  }
+  
+  const video = $('video');
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+  // Kompres gambar menjadi 10KB
+  compressImage(canvas.toDataURL('image/jpeg'), 10, (compressedDataUrl) => {
+    currentPhoto = compressedDataUrl;
+    
+    // Tampilkan preview
+    const preview = document.createElement('img');
+    preview.src = compressedDataUrl;
+    const cameraPlaceholder = $('.camera-placeholder');
+    cameraPlaceholder.innerHTML = '';
+    cameraPlaceholder.appendChild(preview);
+    
+    // Aktifkan tombol upload
+    $('#uploadBtn').disabled = false;
+    
+    toast('Foto berhasil diambil', 'success');
+  });
+}
+
+// Fungsi untuk mengkompres gambar
+function compressImage(dataUrl, maxSizeKB, callback) {
+  const img = new Image();
+  img.src = dataUrl;
+  img.onload = () => {
+    let quality = 0.9;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    
+    const compress = () => {
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+      const sizeKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024);
+      
+      if (sizeKB > maxSizeKB && quality > 0.1) {
+        quality -= 0.1;
+        compress();
+      } else {
+        callback(compressedDataUrl);
+      }
+    };
+    
+    compress();
+  };
+}
+
+// Fungsi untuk mengupload presensi
+async function uploadPresence() {
+  if (!currentPhoto) {
+    toast('Ambil foto terlebih dahulu', 'error');
+    return;
+  }
+  
+  const jenis = $('#jenis').value;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  
+  // Periksa apakah sudah presensi hari ini untuk jenis yang sama
+  try {
+    const existingPresence = await db.collection('presences')
+      .where('uid', '==', currentUser.uid)
+      .where('tanggal', '==', today)
+      .where('jenis', '==', jenis)
       .get();
     
-    const userList = $('#userList') || $('#rulesUserList');
-    if (!userList) return;
+    if (!existingPresence.empty) {
+      toast('Anda sudah melakukan presensi ' + jenis + ' hari ini', 'error');
+      return;
+    }
+  } catch (error) {
+    console.error("Error checking existing presence:", error);
+    toast('Error memeriksa presensi', 'error');
+    return;
+  }
+  
+  // Upload ke Cloudinary
+  try {
+    $('#uploadBtn').disabled = true;
+    $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
     
-    userList.innerHTML = '';
+    // Upload foto ke Cloudinary
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/da7idhh4f/upload`;
+    const uploadPreset = 'FupaSnack';
+    
+    const formData = new FormData();
+    formData.append('file', currentPhoto);
+    formData.append('upload_preset', uploadPreset);
+    
+    const response = await fetch(cloudinaryUrl, {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    const photoUrl = data.secure_url;
+    
+    // Dapatkan lokasi
+    let lat = 0;
+    let lng = 0;
+    if (navigator.geolocation) {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+      lat = position.coords.latitude;
+      lng = position.coords.longitude;
+    }
+    
+    // Tentukan status presensi
+    const status = determinePresenceStatus(now, jenis);
+    
+    // Simpan ke Firestore
+    await db.collection('presences').add({
+      uid: currentUser.uid,
+      nama: userData.nama,
+      tanggal: today,
+      waktu: now,
+      jenis: jenis,
+      status: status,
+      koordinat: new firebase.firestore.GeoPoint(lat, lng),
+      foto: photoUrl,
+      shift: getCurrentShift(now)
+    });
+    
+    toast('Presensi berhasil dicatat', 'success');
+    
+    // Reset state
+    currentPhoto = null;
+    $('#uploadBtn').disabled = true;
+    $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+    
+    // Reload riwayat
+    loadPresenceHistory();
+    
+    // Setup ulang kamera
+    setupCamera();
+    
+  } catch (error) {
+    console.error("Error uploading presence:", error);
+    toast('Gagal mengupload presensi', 'error');
+    $('#uploadBtn').disabled = false;
+    $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+  }
+}
+
+// Fungsi untuk menentukan status presensi
+function determinePresenceStatus(now, jenis) {
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const day = now.getDay(); // 0 = Minggu
+  
+  // Hari Minggu adalah libur
+  if (day === 0) return "Libur";
+  
+  // Tentukan shift
+  const shift = getCurrentShift(now);
+  
+  // Tentukan batas waktu
+  let startTime, endTime, lateLimit;
+  
+  if (jenis === 'berangkat') {
+    if (shift === 'pagi') {
+      startTime = { hour: 5, minute: 30 }; // 05:30
+      endTime = { hour: 6, minute: 0 };    // 06:00
+      lateLimit = { hour: 6, minute: 20 }; // 06:20
+    } else { // shift sore
+      startTime = { hour: 14, minute: 0 }; // 14:00
+      endTime = { hour: 14, minute: 30 };  // 14:30
+      lateLimit = { hour: 14, minute: 50 }; // 14:50
+    }
+  } else { // pulang
+    if (shift === 'pagi') {
+      startTime = { hour: 10, minute: 0 }; // 10:00
+      endTime = { hour: 11, minute: 0 };   // 11:00
+      lateLimit = { hour: 11, minute: 20 }; // 11:20
+    } else { // shift sore
+      startTime = { hour: 17, minute: 30 }; // 17:30
+      endTime = { hour: 18, minute: 0 };    // 18:00
+      lateLimit = { hour: 18, minute: 20 }; // 18:20
+    }
+  }
+  
+  // Konversi waktu sekarang ke menit
+  const currentMinutes = hour * 60 + minute;
+  const startMinutes = startTime.hour * 60 + startTime.minute;
+  const endMinutes = endTime.hour * 60 + endTime.minute;
+  const lateMinutes = lateLimit.hour * 60 + lateLimit.minute;
+  
+  // Tentukan status
+  if (currentMinutes < startMinutes) return "Di luar sesi presensi";
+  if (currentMinutes <= endMinutes) return "Tepat Waktu";
+  if (currentMinutes <= lateMinutes) return "Terlambat";
+  return "Di luar sesi presensi";
+}
+
+// Fungsi untuk mendapatkan shift berdasarkan waktu
+function getCurrentShift(now) {
+  const hour = now.getHours();
+  return (hour < 12) ? 'pagi' : 'sore';
+}
+
+// Fungsi untuk memeriksa status presensi
+function checkPresenceStatus() {
+  const now = new Date();
+  const statusElement = $('#statusText');
+  const statusChip = $('#statusChip');
+  
+  if (!statusElement || !statusChip) return;
+  
+  const day = now.getDay(); // 0 = Minggu
+  
+  if (day === 0) {
+    statusElement.textContent = 'Libur';
+    statusChip.className = 'status s-bad';
+    statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">Libur</span>';
+    return;
+  }
+  
+  const hour = now.getHours();
+  const shift = getCurrentShift(now);
+  
+  if (shift === 'pagi') {
+    if (hour >= 5 && hour < 12) {
+      statusElement.textContent = 'Sesi Presensi ' + (hour < 10 ? 'Berangkat' : 'Pulang');
+      statusChip.className = 'status s-good';
+    } else {
+      statusElement.textContent = 'Di Luar Sesi Presensi';
+      statusChip.className = 'status s-bad';
+    }
+  } else {
+    if (hour >= 14 && hour < 18) {
+      statusElement.textContent = 'Sesi Presensi ' + (hour < 17 ? 'Berangkat' : 'Pulang');
+      statusChip.className = 'status s-good';
+    } else {
+      statusElement.textContent = 'Di Luar Sesi Presensi';
+      statusChip.className = 'status s-bad';
+    }
+  }
+}
+
+// Fungsi untuk memuat riwayat presensi
+async function loadPresenceHistory() {
+  try {
+    const limit = $('#historyFilter').value;
+    let query = db.collection('presences')
+      .where('uid', '==', currentUser.uid)
+      .orderBy('waktu', 'desc');
+    
+    if (limit !== 'all') {
+      query = query.limit(parseInt(limit));
+    }
+    
+    const snapshot = await query.get();
+    const logList = $('#logList');
     
     if (snapshot.empty) {
-      userList.innerHTML = '<div style="padding: 10px; text-align: center; opacity: 0.7;">Tidak ada karyawan</div>';
+      logList.innerHTML = '<div class="riwayat-item">Tidak ada riwayat presensi</div>';
       return;
     }
     
+    logList.innerHTML = '';
     snapshot.forEach(doc => {
       const data = doc.data();
-      const item = document.createElement('div');
-      item.className = 'user-item';
-      item.dataset.uid = doc.id;
-      item.textContent = data.nama;
+      const waktu = data.waktu.toDate();
+      const options = { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit' 
+      };
       
-      item.addEventListener('click', () => {
-        item.classList.toggle('selected');
-      });
+      const statusClass = 
+        data.status === 'Tepat Waktu' ? 's-good' :
+        data.status === 'Terlambat' ? 's-warn' : 's-bad';
       
-      userList.appendChild(item);
+      const icon = data.jenis === 'berangkat' ? 'login' : 'logout';
+      
+      logList.innerHTML += `
+        <div class="riwayat-item">
+          <div class="riwayat-jenis">
+            <span class="material-symbols-rounded">${icon}</span>
+            ${data.jenis}
+            <span class="status ${statusClass}" style="margin-left:auto;font-size:12px">
+              ${data.status}
+            </span>
+          </div>
+          <div class="riwayat-time">
+            ${waktu.toLocaleDateString('id-ID', options)}
+          </div>
+        </div>
+      `;
     });
   } catch (error) {
-    console.error('Error loading user list:', error);
-    showToast('Gagal memuat daftar karyawan', 'error');
+    console.error("Error loading presence history:", error);
+    $('#logList').innerHTML = '<div class="riwayat-item">Error memuat riwayat</div>';
   }
-};
+}
 
-// Jalankan inisialisasi ketika DOM sudah dimuat
-document.addEventListener('DOMContentLoaded', initApp);
+// Fungsi untuk menampilkan dialog cuti
+function showCutiDialog() {
+  $('#cutiTanggal').valueAsDate = new Date();
+  $('#cutiDlg').showModal();
+}
+
+// Fungsi untuk menyimpan profil
+async function saveProfile() {
+  try {
+    const nama = $('#nama').value;
+    const alamat = $('#alamat').value;
+    
+    if (!nama || !alamat) {
+      toast('Nama dan alamat harus diisi', 'error');
+      return;
+    }
+    
+    await db.collection('users').doc(currentUser.uid).update({
+      nama: nama,
+      alamat: alamat
+    });
+    
+    userData.nama = nama;
+    userData.alamat = alamat;
+    
+    toast('Profil berhasil disimpan', 'success');
+    $('#profileDlg').close();
+  } catch (error) {
+    console.error("Error saving profile:", error);
+    toast('Gagal menyimpan profil', 'error');
+  }
+}
+
+// Fungsi untuk logout
+function logout() {
+  auth.signOut().then(() => {
+    window.location.href = 'index.html';
+  }).catch((error) => {
+    console.error("Error signing out:", error);
+    toast('Gagal keluar', 'error');
+  });
+}
+
+// Fungsi untuk memuat semua data presensi (admin)
+async function loadAllPresences() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk export ke CSV (admin)
+async function exportToCSV() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk membuat user baru (admin)
+async function createUser() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk mengirim pengumuman (admin)
+async function sendAnnouncement() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk memuat permintaan cuti (admin)
+async function loadCutiRequests() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk menampilkan dialog aturan waktu (admin)
+function showTimeRulesDialog() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk menyimpan aturan waktu (admin)
+async function saveTimeRules() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk menyimpan pengaturan jadwal (admin)
+async function saveScheduleSettings() {
+  // Implementasi untuk admin
+}
+
+// Fungsi untuk toggle range tanggal kustom
+function toggleCustomDateRange() {
+  const period = $('#fPeriode').value;
+  $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+}
+
+// Fungsi untuk toggle seleksi user
+function toggleUserSelection() {
+  const target = $('#announceTarget').value;
+  $('#userSelection').style.display = target === 'specific' ? 'block' : 'none';
+}
