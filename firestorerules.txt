@@ -1,37 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Collection users: hanya admin yang bisa membaca semua, dan user hanya bisa membaca data sendiri
+    // Collection users: hanya user yang terautentikasi yang bisa baca/tulis data mereka sendiri
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Collection presensi: admin bisa baca semua, user hanya bisa baca dan tulis data sendiri
-    match /presensi/{presensiId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
-      allow update, delete: if false; // Tidak mengizinkan update atau delete untuk presensi
+    
+    // Collection presensi: user bisa baca data mereka sendiri, admin bisa baca semua
+    match /presensi/{docId} {
+      allow read: if request.auth != null && 
+        (resource.data.uid == request.auth.uid || exists(/databases/$(database)/documents/users/$(request.auth.uid)/roleAdmin));
+      allow write: if request.auth != null && request.auth.uid == resource.data.uid;
     }
-
-    // Collection notifikasi: admin bisa baca semua, user hanya bisa baca notifikasi yang ditujukan kepadanya
-    match /notifikasi/{notifikasiId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.targetUID || isAdmin(request.auth.uid) || resource.data.targetRole == 'all');
-      allow create: if request.auth != null && (isAdmin(request.auth.uid) || request.auth.uid == request.resource.data.targetUID);
-      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.targetUID || isAdmin(request.auth.uid));
+    
+    // Collection notifikasi: user bisa baca notifikasi mereka sendiri, admin bisa baca semua
+    match /notifikasi/{docId} {
+      allow read: if request.auth != null && 
+        (resource.data.targetUid == request.auth.uid || resource.data.targetRole == 'admin' || exists(/databases/$(database)/documents/users/$(request.auth.uid)/roleAdmin));
+      allow write: if request.auth != null;
     }
-
-    // Collection cuti: admin bisa baca semua, user hanya bisa baca dan ajukan cuti untuk dirinya
-    match /cuti/{cutiId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
-      allow update: if request.auth != null && isAdmin(request.auth.uid); // Hanya admin yang bisa update (approve/reject)
-      allow delete: if false;
-    }
-
-    // Fungsi pembantu: memeriksa apakah user adalah admin
-    function isAdmin(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid)) && get(/databases/$(database)/documents/users/$(uid)).data().role == 'admin';
+    
+    // Collection cuti: karyawan bisa ajukan cuti, admin bisa baca semua
+    match /cuti/{docId} {
+      allow read: if request.auth != null && 
+        (resource.data.uid == request.auth.uid || exists(/databases/$(database)/documents/users/$(request.auth.uid)/roleAdmin));
+      allow write: if request.auth != null;
     }
   }
 }
