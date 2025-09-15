@@ -13,24 +13,16 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// UID Admin dan Karyawan
+// Variabel global
+let currentUser = null;
+let userData = null;
+let cameraStream = null;
+let capturedPhoto = null;
+
+// Daftar UID Admin
 const ADMIN_UIDS = [
   "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
   "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-];
-
-const KARYAWAN_UIDS = [
-  "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
-  "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
-  "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
-  "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
-  "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
-  "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
-  "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
-  "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
-  "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
-  "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
-  "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
 ];
 
 // Fungsi utilitas
@@ -52,117 +44,87 @@ const showToast = (msg, type = 'info') => {
   setTimeout(() => { toast.style.display = "none"; }, 3000);
 };
 
-// Format tanggal Indonesia
-const formatTanggal = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = timestamp.toDate();
-  const options = { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  };
-  return date.toLocaleDateString('id-ID', options);
+// Fungsi untuk mendapatkan waktu server
+const getServerTimestamp = () => {
+  return firebase.firestore.FieldValue.serverTimestamp();
 };
 
-// Format waktu saja
-const formatWaktu = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = timestamp.toDate();
-  return date.toLocaleTimeString('id-ID');
+// Fungsi untuk memeriksa apakah user adalah admin
+const isAdmin = (uid) => {
+  return ADMIN_UIDS.includes(uid);
 };
 
-// Deteksi status presensi berdasarkan waktu
-const getStatusPresensi = (jenis, waktu) => {
-  if (!waktu) return { status: 'Tidak Valid', kelas: 's-bad' };
+// Fungsi untuk mendapatkan status presensi berdasarkan waktu
+const getPresenceStatus = (jenis, waktu) => {
+  const now = new Date(waktu.toDate().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }));
+  const day = now.getDay();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
   
-  const now = waktu.toDate();
-  const hari = now.getDay(); // 0 = Minggu, 1 = Senin, dst
-  const jam = now.getHours();
-  const menit = now.getMinutes();
-  
-  // Hari Minggu libur
-  if (hari === 0) {
-    return { status: 'Libur', kelas: 's-bad' };
-  }
+  // Hari Minggu adalah libur
+  if (day === 0) return "Libur";
   
   // Shift pagi: berangkat 05.30–06.00, pulang 10.00–11.00
-  // Shift sore: berangkat 14.00-14.30, pulang 17.30-18.00
+  // Shift sore: berangkat 14.00–14.30, pulang 17.30–18.00
+  
   if (jenis === 'berangkat') {
-    // Cek shift pagi
-    if ((jam === 5 && menit >= 30) || (jam === 6 && menit <= 0)) {
-      return { status: 'Tepat Waktu', kelas: 's-good' };
-    } 
-    // Cek shift sore
-    else if ((jam === 14 && menit >= 0 && menit <= 30) || (jam === 14 && menit <= 30)) {
-      return { status: 'Tepat Waktu', kelas: 's-good' };
+    // Shift pagi
+    if ((hours === 5 && minutes >= 30) || (hours === 6 && minutes === 0)) {
+      return "Tepat Waktu";
+    } else if (hours === 6 && minutes > 0 && minutes <= 20) {
+      return "Terlambat";
     }
-    // Terlambat (≤ 20 menit)
-    else if (
-      (jam === 6 && menit <= 20) || // shift pagi
-      (jam === 14 && menit <= 50)   // shift sore
-    ) {
-      return { status: 'Terlambat', kelas: 's-warn' };
+    
+    // Shift sore
+    if ((hours === 14 && minutes >= 0 && minutes <= 30)) {
+      return "Tepat Waktu";
+    } else if (hours === 14 && minutes > 30 && minutes <= 50) {
+      return "Terlambat";
     }
-    // Di luar sesi
-    else {
-      return { status: 'Di Luar Sesi', kelas: 's-bad' };
+  } else if (jenis === 'pulang') {
+    // Shift pagi
+    if ((hours === 10 && minutes >= 0) || (hours === 11 && minutes === 0)) {
+      return "Tepat Waktu";
+    } else if (hours === 11 && minutes > 0 && minutes <= 20) {
+      return "Terlambat";
     }
-  } 
-  else if (jenis === 'pulang') {
-    // Cek shift pagi
-    if ((jam === 10 && menit >= 0) || (jam === 11 && menit <= 0)) {
-      return { status: 'Tepat Waktu', kelas: 's-good' };
-    } 
-    // Cek shift sore
-    else if ((jam === 17 && menit >= 30) || (jam === 18 && menit <= 0)) {
-      return { status: 'Tepat Waktu', kelas: 's-good' };
-    }
-    // Terlambat (≤ 20 menit)
-    else if (
-      (jam === 11 && menit <= 20) || // shift pagi
-      (jam === 18 && menit <= 20)    // shift sore
-    ) {
-      return { status: 'Terlambat', kelas: 's-warn' };
-    }
-    // Di luar sesi
-    else {
-      return { status: 'Di Luar Sesi', kelas: 's-bad' };
+    
+    // Shift sore
+    if ((hours === 17 && minutes >= 30) || (hours === 18 && minutes === 0)) {
+      return "Tepat Waktu";
+    } else if (hours === 18 && minutes > 0 && minutes <= 20) {
+      return "Terlambat";
     }
   }
   
-  return { status: 'Tidak Valid', kelas: 's-bad' };
+  return "Di luar sesi presensi";
 };
 
-// Kompres gambar sebelum upload ke Cloudinary
-const kompresGambar = (file, maxSizeKB = 10) => {
+// Fungsi untuk mengompres gambar
+const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
-      img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Hitung ukuran baru dengan menjaga aspect ratio
+        // Set maksimum dimensi
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
-        const maxDimension = 800;
         
         if (width > height) {
-          if (width > maxDimension) {
-            height *= maxDimension / width;
-            width = maxDimension;
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
           }
         } else {
-          if (height > maxDimension) {
-            width *= maxDimension / height;
-            height = maxDimension;
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
           }
         }
         
@@ -170,102 +132,47 @@ const kompresGambar = (file, maxSizeKB = 10) => {
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Kompres dengan kualitas sesuai untuk mencapai ~10KB
-        let quality = 0.8;
-        let compressedDataUrl;
-        
-        do {
-          compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-          quality -= 0.1;
-        } while (quality > 0.1 && compressedDataUrl.length > maxSizeKB * 1024);
-        
-        // Konversi data URL ke blob
-        fetch(compressedDataUrl)
-          .then(res => res.blob())
-          .then(blob => resolve(blob))
-          .catch(err => reject(err));
+        // Kompres ke format JPEG dengan kualitas 0.7
+        canvas.toBlob((blob) => {
+          resolve(blob);
+        }, 'image/jpeg', 0.7);
       };
+      img.src = event.target.result;
     };
     reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
   });
 };
 
-// Upload gambar ke Cloudinary
-const uploadKeCloudinary = (file) => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // Kompres gambar terlebih dahulu
-      const compressedFile = await kompresGambar(file);
-      
-      const formData = new FormData();
-      formData.append('file', compressedFile);
-      formData.append('upload_preset', 'FupaSnack');
-      
-      fetch(`https://api.cloudinary.com/v1_1/da7idhh4f/image/upload`, {
-        method: 'POST',
-        body: formData
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.secure_url) {
-          resolve(data.secure_url);
-        } else {
-          reject(new Error('Upload gagal'));
-        }
-      })
-      .catch(error => reject(error));
-    } catch (error) {
-      reject(error);
-    }
+// Fungsi untuk upload ke Cloudinary
+const uploadToCloudinary = (blob) => {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', blob);
+    formData.append('upload_preset', 'FupaSnack');
+    formData.append('cloud_name', 'da7idhh4f');
+    
+    fetch('https://api.cloudinary.com/v1_1/da7idhh4f/image/upload', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.secure_url) {
+        resolve(data.secure_url);
+      } else {
+        reject(new Error('Upload failed'));
+      }
+    })
+    .catch(error => reject(error));
   });
 };
 
-// Fungsi untuk mendapatkan waktu server dari Firestore
-const getWaktuServer = async () => {
-  try {
-    const docRef = db.collection('serverTime').doc('current');
-    const doc = await docRef.get();
-    
-    if (doc.exists) {
-      return doc.data().timestamp;
-    } else {
-      // Jika belum ada, buat timestamp baru
-      const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-      await docRef.set({ timestamp });
-      return timestamp;
-    }
-  } catch (error) {
-    console.error('Error mendapatkan waktu server:', error);
-    return firebase.firestore.Timestamp.now();
-  }
-};
-
-// Fungsi untuk memeriksa apakah sudah presensi hari ini
-const sudahPresensiHariIni = async (uid, jenis) => {
-  try {
-    const sekarang = new Date();
-    const awalHari = new Date(sekarang.getFullYear(), sekarang.getMonth(), sekarang.getDate());
-    const akhirHari = new Date(sekarang.getFullYear(), sekarang.getMonth(), sekarang.getDate() + 1);
-    
-    const querySnapshot = await db.collection('presensi')
-      .where('uid', '==', uid)
-      .where('jenis', '==', jenis)
-      .where('waktu', '>=', awalHari)
-      .where('waktu', '<=', akhirHari)
-      .get();
-      
-    return !querySnapshot.empty;
-  } catch (error) {
-    console.error('Error memeriksa presensi:', error);
-    return false;
-  }
-};
-
-// Fungsi untuk mendapatkan koordinat geolokasi
-const dapatkanKoordinat = () => {
+// Fungsi untuk mendapatkan lokasi
+const getLocation = () => {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolokasi tidak didukung'));
+      reject(new Error('Geolocation is not supported'));
     } else {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -276,434 +183,430 @@ const dapatkanKoordinat = () => {
         },
         (error) => {
           reject(error);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        }
       );
     }
   });
 };
 
 // Fungsi untuk memuat riwayat presensi
-const muatRiwayatPresensi = async (uid, limit = 20) => {
+const loadPresenceHistory = async (limit = 20, filters = {}) => {
   try {
-    let query = db.collection('presensi')
-      .orderBy('waktu', 'desc');
+    let query = db.collection('presensi');
     
-    // Jika bukan admin, filter berdasarkan UID
-    if (uid && !ADMIN_UIDS.includes(uid)) {
-      query = query.where('uid', '==', uid);
+    // Jika bukan admin, hanya tampilkan presensi user sendiri
+    if (!isAdmin(currentUser.uid)) {
+      query = query.where('uid', '==', currentUser.uid);
+    } else if (filters.nama) {
+      // Filter berdasarkan nama untuk admin
+      query = query.where('nama', '==', filters.nama);
     }
     
-    // Terapkan limit jika bukan "all"
+    // Filter berdasarkan tanggal jika ada
+    if (filters.startDate && filters.endDate) {
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      
+      query = query.where('waktu', '>=', start).where('waktu', '<=', end);
+    }
+    
+    query = query.orderBy('waktu', 'desc');
+    
     if (limit !== 'all') {
       query = query.limit(parseInt(limit));
     }
     
     const snapshot = await query.get();
-    const riwayat = [];
+    const presences = [];
     
     snapshot.forEach(doc => {
       const data = doc.data();
-      riwayat.push({
+      presences.push({
         id: doc.id,
         ...data,
-        statusObj: getStatusPresensi(data.jenis, data.waktu)
+        waktu: data.waktu.toDate()
       });
     });
     
-    return riwayat;
+    return presences;
   } catch (error) {
-    console.error('Error memuat riwayat presensi:', error);
+    console.error('Error loading presence history:', error);
+    showToast('Gagal memuat riwayat presensi', 'error');
     return [];
   }
 };
 
 // Fungsi untuk memuat notifikasi
-const muatNotifikasi = async (uid, role) => {
+const loadNotifications = async () => {
   try {
     let query = db.collection('notifikasi')
-      .orderBy('waktu', 'desc')
-      .limit(20);
+      .where('targetUID', 'in', [currentUser.uid, 'all'])
+      .orderBy('createdAt', 'desc');
     
-    // Admin melihat notifikasi untuk admin
-    if (role === 'admin') {
-      query = query.where('targetRole', '==', 'admin');
-    } 
-    // Karyawan melihat notifikasi untuk UID mereka
-    else {
-      query = query.where('targetUID', '==', uid);
+    if (isAdmin(currentUser.uid)) {
+      // Admin melihat semua notifikasi cuti
+      query = db.collection('notifikasi')
+        .where('type', '==', 'cuti')
+        .orderBy('createdAt', 'desc');
     }
     
     const snapshot = await query.get();
-    const notifikasi = [];
+    const notifications = [];
     
     snapshot.forEach(doc => {
-      notifikasi.push({
+      const data = doc.data();
+      notifications.push({
         id: doc.id,
-        ...doc.data()
+        ...data,
+        createdAt: data.createdAt.toDate()
       });
     });
     
-    return notifikasi;
+    return notifications;
   } catch (error) {
-    console.error('Error memuat notifikasi:', error);
+    console.error('Error loading notifications:', error);
+    showToast('Gagal memuat notifikasi', 'error');
     return [];
   }
 };
 
-// Fungsi untuk membuat notifikasi
-const buatNotifikasi = (data) => {
-  return db.collection('notifikasi').add({
-    ...data,
-    waktu: firebase.firestore.FieldValue.serverTimestamp(),
-    dibaca: false
-  });
-};
-
-// Fungsi untuk menandai notifikasi sebagai telah dibaca
-const tandaiNotifikasiDibaca = (notifId) => {
-  return db.collection('notifikasi').doc(notifId).update({
-    dibaca: true
-  });
+// Fungsi untuk menandai notifikasi sebagai sudah dibaca
+const markNotificationAsRead = async (notifId) => {
+  try {
+    await db.collection('notifikasi').doc(notifId).update({
+      read: true
+    });
+    return true;
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    return false;
+  }
 };
 
 // Fungsi untuk menghapus notifikasi
-const hapusNotifikasi = (notifId) => {
-  return db.collection('notifikasi').doc(notifId).delete();
+const deleteNotification = async (notifId) => {
+  try {
+    await db.collection('notifikasi').doc(notifId).delete();
+    return true;
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    return false;
+  }
 };
 
 // Fungsi untuk mengajukan cuti
-const ajukanCuti = (data) => {
-  return db.collection('cuti').add({
-    ...data,
-    status: 'pending',
-    waktuAjukan: firebase.firestore.FieldValue.serverTimestamp()
-  });
+const submitCuti = async (tanggal, jenis, keterangan) => {
+  try {
+    const cutiData = {
+      uid: currentUser.uid,
+      nama: userData.nama,
+      tanggal: new Date(tanggal),
+      jenis: jenis,
+      keterangan: keterangan,
+      status: 'pending',
+      diajukanPada: getServerTimestamp()
+    };
+    
+    // Simpan data cuti
+    const cutiRef = await db.collection('cuti').add(cutiData);
+    
+    // Buat notifikasi untuk admin
+    const notifData = {
+      type: 'cuti',
+      targetUID: 'admin',
+      title: 'Pengajuan Cuti',
+      message: `${userData.nama} mengajukan cuti ${jenis} pada ${tanggal}`,
+      data: { cutiId: cutiRef.id },
+      createdAt: getServerTimestamp(),
+      read: false
+    };
+    
+    await db.collection('notifikasi').add(notifData);
+    
+    return true;
+  } catch (error) {
+    console.error('Error submitting cuti:', error);
+    return false;
+  }
 };
 
-// Fungsi untuk memproses cuti (admin)
-const prosesCuti = (cutiId, status, adminUid) => {
-  return db.collection('cuti').doc(cutiId).update({
-    status,
-    waktuProses: firebase.firestore.FieldValue.serverTimestamp(),
-    adminUid
-  });
+// Fungsi untuk memproses cuti
+const processCuti = async (cutiId, approved) => {
+  try {
+    // Update status cuti
+    await db.collection('cuti').doc(cutiId).update({
+      status: approved ? 'approved' : 'rejected'
+    });
+    
+    // Dapatkan data cuti
+    const cutiDoc = await db.collection('cuti').doc(cutiId).get();
+    const cutiData = cutiDoc.data();
+    
+    // Buat notifikasi untuk karyawan
+    const notifData = {
+      type: 'cuti_result',
+      targetUID: cutiData.uid,
+      title: 'Hasil Pengajuan Cuti',
+      message: `Pengajuan cuti ${cutiData.jenis} Anda ${approved ? 'disetujui' : 'ditolak'}`,
+      data: { 
+        cutiId: cutiId,
+        approved: approved,
+        jenis: cutiData.jenis,
+        tanggal: cutiData.tanggal
+      },
+      createdAt: getServerTimestamp(),
+      read: false
+    };
+    
+    await db.collection('notifikasi').add(notifData);
+    
+    return true;
+  } catch (error) {
+    console.error('Error processing cuti:', error);
+    return false;
+  }
 };
 
 // Fungsi untuk membuat entri presensi dari cuti
-const buatEntriDariCuti = (cutiData) => {
-  return db.collection('presensi').add({
-    uid: cutiData.uid,
-    nama: cutiData.nama,
-    jenis: 'cuti',
-    status: cutiData.jenis,
-    waktu: cutiData.tanggal, // tanggal cuti yang dipilih
-    koordinat: { lat: 0, lng: 0 },
-    selfie: '',
-    dariCuti: true
-  });
-};
-
-// Fungsi untuk ekspor data ke CSV
-const eksporKeCSV = (data, filename) => {
-  // Format data sesuai STDR
-  const formattedData = formatDataSTDR(data);
-  
-  // Buat header CSV
-  const headers = ['Nama', 'Tanggal', 'Jam', 'Jenis', 'Status', 'Koordinat'];
-  let csv = headers.join(',') + '\n';
-  
-  // Tambahkan data
-  formattedData.forEach(blok => {
-    blok.entries.forEach(entry => {
-      const row = [
-        `"${blok.nama}"`,
-        `"${entry.tanggal}"`,
-        `"${entry.jam}"`,
-        `"${entry.jenis}"`,
-        `"${entry.status}"`,
-        `"${entry.koordinat}"`
-      ];
-      csv += row.join(',') + '\n';
-    });
-    csv += '\n'; // Baris kosong antar blok
-  });
-  
-  // Buat file dan unduh
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-// Format data sesuai STDR (Standar)
-const formatDataSTDR = (data) => {
-  // Kelompokkan data berdasarkan nama karyawan
-  const groupedByNama = {};
-  
-  data.forEach(item => {
-    if (!groupedByNama[item.nama]) {
-      groupedByNama[item.nama] = [];
-    }
-    groupedByNama[item.nama].push(item);
-  });
-  
-  // Urutkan nama A-Z
-  const sortedNames = Object.keys(groupedByNama).sort();
-  
-  // Format setiap blok
-  const result = [];
-  
-  sortedNames.forEach(nama => {
-    // Urutkan entri berdasarkan tanggal
-    const entries = groupedByNama[nama]
-      .sort((a, b) => a.waktu - b.waktu)
-      .map(entry => {
-        const date = entry.waktu.toDate();
-        return {
-          tanggal: date.toLocaleDateString('id-ID'),
-          jam: date.toLocaleTimeString('id-ID'),
-          jenis: entry.jenis,
-          status: entry.statusObj.status,
-          koordinat: `${entry.koordinat.lat}, ${entry.koordinat.lng}`
-        };
-      });
+const createPresenceFromCuti = async (cutiId) => {
+  try {
+    // Dapatkan data cuti
+    const cutiDoc = await db.collection('cuti').doc(cutiId).get();
+    const cutiData = cutiDoc.data();
     
-    result.push({
-      nama,
-      entries
-    });
-  });
-  
-  return result;
+    // Buat entri presensi
+    const presenceData = {
+      uid: cutiData.uid,
+      nama: cutiData.nama,
+      jenis: 'cuti',
+      status: cutiData.jenis,
+      waktu: cutiData.tanggal,
+      koordinat: null,
+      selfie: null,
+      createdAt: getServerTimestamp()
+    };
+    
+    await db.collection('presensi').add(presenceData);
+    
+    return true;
+  } catch (error) {
+    console.error('Error creating presence from cuti:', error);
+    return false;
+  }
 };
 
-// Fungsi untuk memuat daftar karyawan (admin)
-const muatDaftarKaryawan = async () => {
+// Fungsi untuk mengirim pengumuman
+const sendAnnouncement = async (judul, deskripsi, targetUID) => {
+  try {
+    const notifData = {
+      type: 'pengumuman',
+      targetUID: targetUID,
+      title: judul,
+      message: deskripsi,
+      createdAt: getServerTimestamp(),
+      read: false
+    };
+    
+    await db.collection('notifikasi').add(notifData);
+    
+    return true;
+  } catch (error) {
+    console.error('Error sending announcement:', error);
+    return false;
+  }
+};
+
+// Fungsi untuk mendapatkan daftar karyawan
+const getKaryawanList = async () => {
   try {
     const snapshot = await db.collection('users')
       .where('role', '==', 'karyawan')
       .get();
     
-    const karyawan = [];
+    const karyawanList = [];
     snapshot.forEach(doc => {
-      karyawan.push({
+      const data = doc.data();
+      karyawanList.push({
         id: doc.id,
-        ...doc.data()
+        ...data
       });
     });
     
-    return karyawan;
+    return karyawanList;
   } catch (error) {
-    console.error('Error memuat daftar karyawan:', error);
+    console.error('Error getting karyawan list:', error);
     return [];
   }
 };
 
-// Fungsi untuk membuat akun karyawan baru (admin)
-const buatAkunKaryawan = async (email, password, data) => {
-  try {
-    // Buat user di Firebase Auth
-    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-    const user = userCredential.user;
-    
-    // Simpan data tambahan di Firestore
-    await db.collection('users').doc(user.uid).set({
-      email,
-      nama: data.nama,
-      alamat: data.alamat,
-      role: 'karyawan',
-      fotoProfil: data.fotoProfil || '',
-      dibuatPada: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    return user;
-  } catch (error) {
-    console.error('Error membuat akun karyawan:', error);
-    throw error;
-  }
+// Fungsi untuk mengekspor data ke CSV
+const exportToCSV = (data, filename) => {
+  const csvContent = "data:text/csv;charset=utf-8," 
+    + data.map(row => Object.values(row).join(',')).join('\n');
+  
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  
+  link.click();
+  document.body.removeChild(link);
 };
 
-// Fungsi untuk update profil pengguna
-const updateProfil = async (uid, data) => {
+// Fungsi untuk memformat data presensi untuk CSV
+const formatPresenceForCSV = (presences) => {
+  // Kelompokkan berdasarkan nama
+  const grouped = {};
+  
+  presences.forEach(presence => {
+    if (!grouped[presence.nama]) {
+      grouped[presence.nama] = [];
+    }
+    grouped[presence.nama].push(presence);
+  });
+  
+  // Urutkan nama secara alfabetis
+  const sortedNames = Object.keys(grouped).sort();
+  
+  // Format data untuk CSV
+  const csvData = [];
+  
+  sortedNames.forEach(nama => {
+    // Urutkan presensi berdasarkan tanggal
+    const userPresences = grouped[nama].sort((a, b) => a.waktu - b.waktu);
+    
+    // Tambahkan header untuk setiap karyawan
+    csvData.push([nama]);
+    csvData.push(['Tanggal', 'Jam', 'Jenis', 'Status', 'Koordinat']);
+    
+    // Tambahkan data presensi
+    userPresences.forEach(presence => {
+      const date = presence.waktu.toLocaleDateString('id-ID');
+      const time = presence.waktu.toLocaleTimeString('id-ID');
+      
+      csvData.push([
+        date,
+        time,
+        presence.jenis,
+        presence.status,
+        presence.koordinat ? `${presence.koordinat.latitude}, ${presence.koordinat.longitude}` : '-'
+      ]);
+    });
+    
+    // Tambahkan baris kosong antar karyawan
+    csvData.push([]);
+  });
+  
+  return csvData;
+};
+
+// Fungsi untuk memulai kamera
+const startCamera = async () => {
   try {
-    await db.collection('users').doc(uid).update(data);
+    cameraStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user' },
+      audio: false
+    });
+    
+    const video = $('#cameraPreview');
+    if (video) {
+      video.srcObject = cameraStream;
+    }
+    
     return true;
   } catch (error) {
-    console.error('Error update profil:', error);
-    throw error;
+    console.error('Error accessing camera:', error);
+    showToast('Tidak dapat mengakses kamera', 'error');
+    return false;
   }
 };
 
-// Fungsi untuk upload foto profil ke Cloudinary
-const uploadFotoProfil = async (file, uid) => {
-  try {
-    const url = await uploadKeCloudinary(file);
-    await db.collection('users').doc(uid).update({
-      fotoProfil: url
-    });
-    return url;
-  } catch (error) {
-    console.error('Error upload foto profil:', error);
-    throw error;
+// Fungsi untuk mengambil foto
+const capturePhoto = () => {
+  const video = $('#cameraPreview');
+  const canvas = $('#photoCanvas');
+  const context = canvas.getContext('2d');
+  
+  // Set canvas size to match video
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  
+  // Draw current video frame to canvas
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+  // Convert canvas to blob
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, 'image/jpeg', 0.8);
+  });
+};
+
+// Fungsi untuk menghentikan kamera
+const stopCamera = () => {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
   }
 };
 
-// Inisialisasi kamera
-const initKamera = async (videoElement, canvasElement) => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }, 
-      audio: false 
-    });
+// Event listener untuk auth state changes
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = user;
     
-    videoElement.srcObject = stream;
-    
-    return {
-      stream,
-      ambilFoto: () => {
-        const context = canvasElement.getContext('2d');
-        canvasElement.width = videoElement.videoWidth;
-        canvasElement.height = videoElement.videoHeight;
-        context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+    // Dapatkan data user dari Firestore
+    try {
+      const userDoc = await db.collection('users').doc(user.uid).get();
+      
+      if (userDoc.exists) {
+        userData = userDoc.data();
         
-        return new Promise((resolve) => {
-          canvasElement.toBlob(resolve, 'image/jpeg', 0.8);
-        });
-      },
-      stop: () => {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  } catch (error) {
-    console.error('Error mengakses kamera:', error);
-    throw error;
-  }
-};
-
-// Fungsi untuk memeriksa dan menampilkan dialog install PWA
-const initPWA = () => {
-  let deferredPrompt;
-  const installBtn = document.getElementById('installBtn');
-  
-  if (!installBtn) return;
-  
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'block';
-    
-    installBtn.addEventListener('click', () => {
-      installBtn.style.display = 'none';
-      deferredPrompt.prompt();
-      
-      deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-          console.log('User menerima install');
-        } else {
-          console.log('User menolak install');
+        // Redirect berdasarkan role
+        if (isAdmin(user.uid) && !window.location.pathname.endsWith('admin.html')) {
+          window.location.href = 'admin.html';
+        } else if (!isAdmin(user.uid) && !window.location.pathname.endsWith('karyawan.html')) {
+          window.location.href = 'karyawan.html';
         }
-        deferredPrompt = null;
-      });
-    });
-  });
-};
-
-// Fungsi untuk logout
-const logout = () => {
-  auth.signOut().then(() => {
-    window.location.href = 'index.html';
-  }).catch(error => {
-    console.error('Error logout:', error);
-    showToast('Gagal logout', 'error');
-  });
-};
-
-// Inisialisasi umum untuk semua halaman
-document.addEventListener('DOMContentLoaded', function() {
-  // Inisialisasi PWA
-  initPWA();
-  
-  // Cek status auth
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      // Jika tidak login, redirect ke index.html
-      if (!window.location.pathname.endsWith('index.html')) {
-        window.location.href = 'index.html';
+        
+        // Periksa jika data user kosong
+        if ((!userData.nama || !userData.alamat) && window.location.pathname.endsWith('karyawan.html')) {
+          $('#profileDlg').showModal();
+        }
+      } else {
+        // Buat dokumen user baru jika tidak ada
+        userData = {
+          email: user.email,
+          nama: '',
+          alamat: '',
+          role: isAdmin(user.uid) ? 'admin' : 'karyawan',
+          createdAt: getServerTimestamp()
+        };
+        
+        await db.collection('users').doc(user.uid).set(userData);
+        
+        if (!isAdmin(user.uid)) {
+          $('#profileDlg').showModal();
+        }
       }
-      return;
+    } catch (error) {
+      console.error('Error getting user data:', error);
+      showToast('Gagal memuat data pengguna', 'error');
     }
-    
-    // Jika sudah login, pastikan di halaman yang sesuai
-    const userDoc = await db.collection('users').doc(user.uid).get();
-    
-    if (userDoc.exists) {
-      const userData = userDoc.data();
-      const role = userData.role;
-      
-      // Redirect ke halaman yang sesuai berdasarkan role
-      if (role === 'admin' && !window.location.pathname.endsWith('admin.html')) {
-        window.location.href = 'admin.html';
-      } else if (role === 'karyawan' && !window.location.pathname.endsWith('karyawan.html')) {
-        window.location.href = 'karyawan.html';
-      }
-      
-      // Jika data user baru kosong, tampilkan popup
-      if ((!userData.nama || !userData.alamat) && !sessionStorage.getItem('profileUpdated')) {
-        tampilkanPopupUpdateProfil(user.uid);
-      }
+  } else {
+    // User is signed out
+    if (!window.location.pathname.endsWith('index.html')) {
+      window.location.href = 'index.html';
     }
-  });
+  }
 });
 
-// Tampilkan popup update profil jika data belum lengkap
-const tampilkanPopupUpdateProfil = (uid) => {
-  // Implementasi popup update profil
-  const popup = document.createElement('div');
-  popup.innerHTML = `
-    <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:1000;">
-      <div style="background:white; padding:20px; border-radius:10px; width:90%; max-width:400px;">
-        <h3>Lengkapi Profil Anda</h3>
-        <p>Silakan lengkapi data profil Anda sebelum menggunakan aplikasi.</p>
-        <div style="margin-bottom:10px;">
-          <input type="text" id="popupNama" placeholder="Nama lengkap" style="width:100%; padding:8px; margin-bottom:10px;">
-          <input type="text" id="popupAlamat" placeholder="Alamat" style="width:100%; padding:8px;">
-        </div>
-        <button id="simpanProfilBtn" style="background:#FFB300; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Simpan</button>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(popup);
-  
-  document.getElementById('simpanProfilBtn').addEventListener('click', async () => {
-    const nama = document.getElementById('popupNama').value;
-    const alamat = document.getElementById('popupAlamat').value;
-    
-    if (!nama || !alamat) {
-      showToast('Harap isi semua field', 'error');
-      return;
-    }
-    
-    try {
-      await updateProfil(uid, { nama, alamat });
-      sessionStorage.setItem('profileUpdated', 'true');
-      popup.remove();
-      showToast('Profil berhasil diperbarui', 'success');
-    } catch (error) {
-      console.error('Error update profil:', error);
-      showToast('Gagal update profil', 'error');
-    }
-  });
+// Fungsi untuk logout
+const logout = async () => {
+  try {
+    stopCamera();
+    await auth.signOut();
+  } catch (error) {
+    console.error('Error signing out:', error);
+  }
 };
