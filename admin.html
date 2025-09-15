@@ -156,14 +156,14 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Panel Admin</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 10:45:32</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
       </div>
     </div>
     <div class="icons">
       <div style="position:relative">
         <button id="notifBtn" class="icon-btn" title="Permintaan cuti">
           <span class="material-symbols-rounded">notifications_active</span>
-          <span id="notifBadge" class="badge">0</span>
+          <span id="notifBadge" class="badge" style="display:none">0</span>
         </button>
       </div>
       <button id="profileBtn" class="icon-btn" title="Profil & akun">
@@ -262,24 +262,19 @@
         </div>
         <div id="userSelection" style="display:none; margin-top:10px">
           <div class="user-list" id="userList">
-            Memuat daftar karyawan...
+            <div class="user-item">Memuat daftar karyawan...</div>
           </div>
         </div>
       </section>
     </div>
   </div>
 
-  <!-- FAB pengumuman cepat -->
-  <button class="fab" id="timeRulesFab" title="Aturan Waktu">
-    <span class="material-symbols-rounded">schedule</span>
-  </button>
-
   <!-- Install button -->
   <button class="install-btn" id="installBtn" style="display:none">
     <span class="material-symbols-rounded">download</span> Install App
   </button>
 
-  <!-- Dialog profil admin + create akun -->
+  <!-- Dialog profil admin -->
   <dialog id="profileDlg">
     <div class="dlg-head">
       <div class="row"><span class="material-symbols-rounded">admin_panel_settings</span><b>Profil & Akun</b></div>
@@ -287,27 +282,17 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" value="" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
         <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
         <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
       </div>
-
-      <hr style="margin:16px 0; opacity:.3" />
-
-      <h4 style="margin:0 0 8px">Buat akun karyawan</h4>
-      <div class="row">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">mail</span><input id="newEmail" placeholder="Email karyawan" value="" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">lock</span><input id="newPass" placeholder="Kata sandi sementara" value="fupa123" /></div>
-        <button id="createUserBtn" class="btn"><span class="material-symbols-rounded">person_add</span> Buat</button>
-      </div>
-      <div class="hint" style="opacity:.8;margin-top:6px">Akun dibuat tanpa keluar dari sesi admin.</div>
     </div>
   </dialog>
 
@@ -318,64 +303,7 @@
       <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="dlg-body" id="cutiList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div class="cuti-item">
-        Memuat permintaan cuti...
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Dialog aturan waktu -->
-  <dialog id="timeRulesDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">schedule</span><b>Aturan Waktu Kustom</b></div>
-      <button class="icon-btn" onclick="document.getElementById('timeRulesDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body">
-      <div class="row">
-        <div class="input">
-          <span class="material-symbols-rounded">person</span>
-          <select id="rulesTarget">
-            <option value="all">Semua Karyawan</option>
-            <option value="specific">Karyawan Tertentu</option>
-          </select>
-        </div>
-      </div>
-      
-      <div id="rulesUserSelection" style="display:none; margin-top:10px">
-        <div class="user-list" id="rulesUserList">
-          Memuat daftar karyawan...
-        </div>
-      </div>
-      
-      <div class="row" style="margin-top:16px">
-        <div class="input">
-          <span class="material-symbols-rounded">login</span>
-          <input id="rulesBerangkat" type="time" value="05:30" />
-        </div>
-        <div class="input">
-          <span class="material-symbols-rounded">logout</span>
-          <input id="rulesPulang" type="time" value="10:00" />
-        </div>
-      </div>
-      
-      <div class="row" style="margin-top:10px">
-        <div class="input">
-          <span class="material-symbols-rounded">event_available</span>
-          <select id="rulesLibur" multiple style="height:100px">
-            <option value="0">Minggu</option>
-            <option value="1">Senin</option>
-            <option value="2">Selasa</option>
-            <option value="3">Rabu</option>
-            <option value="4">Kamis</option>
-            <option value="5">Jumat</option>
-            <option value="6">Sabtu</option>
-          </select>
-        </div>
-      </div>
-      
-      <div class="row" style="justify-content:flex-end; margin-top:16px">
-        <button id="saveRulesBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan Aturan</button>
-      </div>
+      <div class="cuti-item">Memuat permintaan cuti...</div>
     </div>
   </dialog>
 
@@ -385,5 +313,203 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Variabel global untuk halaman admin
+    let allPresences = [];
+    let filteredPresences = [];
+
+    // Elemen UI
+    const serverTimeElement = document.getElementById('serverTime');
+    const tableBody = document.getElementById('tableBody');
+    const exportCsvBtn = document.getElementById('exportCsv');
+    const applyFilterBtn = document.getElementById('applyFilter');
+    const fNama = document.getElementById('fNama');
+    const fPeriode = document.getElementById('fPeriode');
+    const fShow = document.getElementById('fShow');
+    const customDateRange = document.getElementById('customDateRange');
+    const fDari = document.getElementById('fDari');
+    const fSampai = document.getElementById('fSampai');
+
+    // Fungsi untuk mengupdate waktu server
+    function updateServerTime() {
+      serverTimeElement.textContent = getWaktuIndonesia();
+    }
+
+    // Fungsi untuk memuat semua data presensi
+    async function loadAllPresences() {
+      try {
+        const snapshot = await db.collection('presences')
+          .orderBy('createdAt', 'desc')
+          .get();
+        
+        allPresences = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          data.id = doc.id;
+          data.createdAt = data.createdAt.toDate();
+          allPresences.push(data);
+        });
+        
+        applyFilters();
+      } catch (error) {
+        console.error('Error loading presences: ', error);
+        toast('Gagal memuat data presensi', 'error');
+      }
+    }
+
+    // Fungsi untuk menerapkan filter
+    function applyFilters() {
+      let filtered = [...allPresences];
+      
+      // Filter nama
+      const namaFilter = fNama.value.toLowerCase();
+      if (namaFilter) {
+        filtered = filtered.filter(p => p.nama.toLowerCase().includes(namaFilter));
+      }
+      
+      // Filter periode
+      const period = fPeriode.value;
+      const now = new Date();
+      
+      if (period === 'harian') {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        filtered = filtered.filter(p => p.createdAt >= today);
+      } else if (period === 'mingguan') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filtered = filtered.filter(p => p.createdAt >= weekAgo);
+      } else if (period === 'bulanan') {
+        const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        filtered = filtered.filter(p => p.createdAt >= monthAgo);
+      } else if (period === 'tahunan') {
+        const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        filtered = filtered.filter(p => p.createdAt >= yearAgo);
+      } else if (period === 'custom') {
+        const dari = new Date(fDari.value);
+        const sampai = new Date(fSampai.value);
+        sampai.setHours(23, 59, 59, 999); // Sampai akhir hari
+        filtered = filtered.filter(p => p.createdAt >= dari && p.createdAt <= sampai);
+      }
+      
+      // Batasi jumlah yang ditampilkan
+      const limit = fShow.value;
+      if (limit !== 'all') {
+        filtered = filtered.slice(0, parseInt(limit));
+      }
+      
+      filteredPresences = filtered;
+      renderTable();
+    }
+
+    // Fungsi untuk merender tabel
+    function renderTable() {
+      tableBody.innerHTML = '';
+      
+      if (filteredPresences.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
+        return;
+      }
+      
+      filteredPresences.forEach(presence => {
+        const waktu = presence.createdAt;
+        const waktuStr = waktu.toLocaleDateString('id-ID', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        
+        const statusClass = presence.status === 'Tepat Waktu' ? 's-good' : 
+                          presence.status === 'Terlambat' ? 's-warn' : 's-bad';
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${waktuStr}</td>
+          <td>${presence.nama}</td>
+          <td>${presence.jenis}</td>
+          <td><span class="status ${statusClass}">${presence.status}</span></td>
+          <td>${presence.latitude}, ${presence.longitude}</td>
+          <td><a href="${presence.photoUrl}" target="_blank">Lihat Foto</a></td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // Fungsi untuk mengekspor CSV
+    function exportToCSV() {
+      if (filteredPresences.length === 0) {
+        toast('Tidak ada data untuk diekspor', 'warning');
+        return;
+      }
+      
+      // Format data sesuai STDR
+      const sortedData = [...filteredPresences].sort((a, b) => {
+        // Urutkan berdasarkan nama (A-Z)
+        const nameCompare = a.nama.localeCompare(b.nama);
+        if (nameCompare !== 0) return nameCompare;
+        
+        // Jika nama sama, urutkan berdasarkan tanggal
+        return a.createdAt - b.createdAt;
+      });
+      
+      let csvContent = 'Waktu,Nama,Shift,Jenis,Status,Latitude,Longitude,Photo URL\n';
+      
+      sortedData.forEach(presence => {
+        const waktu = presence.createdAt.toLocaleDateString('id-ID', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        
+        csvContent += `"${waktu}","${presence.nama}","${presence.shift}","${presence.jenis}","${presence.status}","${presence.latitude}","${presence.longitude}","${presence.photoUrl}"\n`;
+      });
+      
+      // Buat file dan download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast('CSV berhasil diekspor', 'success');
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+      // Update waktu server
+      updateServerTime();
+      setInterval(updateServerTime, 1000);
+      
+      // Load data presensi
+      loadAllPresences();
+      
+      // Export CSV
+      exportCsvBtn.addEventListener('click', exportToCSV);
+      
+      // Apply filters
+      applyFilterBtn.addEventListener('click', applyFilters);
+      
+      // Toggle custom date range
+      fPeriode.addEventListener('change', () => {
+        customDateRange.style.display = fPeriode.value === 'custom' ? 'flex' : 'none';
+      });
+      
+      // Set default dates for custom range
+      const today = new Date();
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      fDari.value = weekAgo.toISOString().split('T')[0];
+      fSampai.value = today.toISOString().split('T')[0];
+    });
+  </script>
 </body>
 </html>
