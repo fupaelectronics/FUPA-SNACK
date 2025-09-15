@@ -23,7 +23,7 @@
       min-height:100svh; overflow:hidden; position:relative;
     }
     .glow{
-      position:absolute; inset:0; pointer-events:none; mix-blend:multiply; filter:blur(40px);
+      position:absolute; inset:0; pointer-events:none; mix-blend-mode:multiply; filter:blur(40px);
       background:
         radial-gradient(600px 400px at 20% 80%, rgba(255,255,255,.35), transparent),
         radial-gradient(400px 300px at 80% 20%, rgba(255,255,255,.25), transparent);
@@ -142,15 +142,28 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="app.js"></script>
   <script>
-    // Daftar UID Admin
+    // Firebase config dari data kunci
+    const firebaseConfig = {
+      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      authDomain: "fupa-snack.firebaseapp.com",
+      projectId: "fupa-snack",
+      storageBucket: "fupa-snack.firebasestorage.app",
+      messagingSenderId: "972524876738",
+      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+    };
+
+    // Inisialisasi Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // UID Admin dan Karyawan dari data kunci
     const ADMIN_UIDS = [
       "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
       "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
     ];
 
-    // Daftar UID Karyawan
     const KARYAWAN_UIDS = [
       "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
       "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
@@ -165,14 +178,56 @@
       "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
     ];
 
-    // Fungsi untuk redirect berdasarkan role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.includes(uid)) {
-        return "admin.html";
-      } else if (KARYAWAN_UIDS.includes(uid)) {
-        return "karyawan.html";
-      } else {
-        auth.signOut();
+    // Util UI
+    const $ = (sel) => document.querySelector(sel);
+    const toast = (msg) => {
+      const t = $("#toast");
+      if (!t) return alert(msg);
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 2200);
+    };
+
+    // Redirect berdasarkan role
+    async function redirectByRole(uid) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          if (userData.role === 'admin') {
+            return "admin.html";
+          } else if (userData.role === 'karyawan') {
+            return "karyawan.html";
+          }
+        } else {
+          // Jika belum ada data user, maka kita cek dari UID yang diberikan
+          if (ADMIN_UIDS.includes(uid)) {
+            // Buat data user untuk admin
+            await db.collection('users').doc(uid).set({
+              email: auth.currentUser.email,
+              role: 'admin',
+              nama: '',
+              alamat: '',
+              foto: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(auth.currentUser.email)}&backgroundColor=ffb300,ffd54f&radius=20`
+            }, { merge: true });
+            return "admin.html";
+          } else if (KARYAWAN_UIDS.includes(uid)) {
+            // Buat data user untuk karyawan
+            await db.collection('users').doc(uid).set({
+              email: auth.currentUser.email,
+              role: 'karyawan',
+              nama: '',
+              alamat: '',
+              foto: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(auth.currentUser.email)}&backgroundColor=ffb300,ffd54f&radius=20`
+            }, { merge: true });
+            return "karyawan.html";
+          } else {
+            // Tidak ada di daftar manapun
+            return null;
+          }
+        }
+      } catch (error) {
+        console.error("Error redirectByRole:", error);
         return null;
       }
     }
@@ -196,7 +251,7 @@
       const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        showToast("Isi email dan kata sandi.", "error"); 
+        toast("Isi email dan kata sandi."); 
         return; 
       }
       
@@ -211,41 +266,30 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
-        // Cek apakah user ada di daftar UID yang diizinkan
-        if (!ADMIN_UIDS.includes(user.uid) && !KARYAWAN_UIDS.includes(user.uid)) {
-          showToast("Akun tidak memiliki akses", "error");
-          await auth.signOut();
-          loginBtn.disabled = false;
-          loginText.textContent = "Masuk";
-          loginSpinner.style.display = "none";
-          return;
-        }
-        
-        // Cek apakah data user sudah ada di Firestore
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        
-        if (!userDoc.exists) {
-          // Buat data user baru jika belum ada
-          await db.collection('users').doc(user.uid).set({
-            email: email,
-            createdAt: getServerTimestamp(),
-            profileCompleted: false
-          });
-        }
-        
         // Tampilkan pesan sukses
         loginText.textContent = "Berhasil!";
         successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        const redirectPage = redirectByRole(user.uid);
+        const redirectPage = await redirectByRole(user.uid);
         if (redirectPage) {
+          // Cek jika data user kosong (nama dan alamat)
+          const userDoc = await db.collection('users').doc(user.uid).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            if (!userData.nama || !userData.alamat) {
+              // Tampilkan popup untuk mengisi data
+              // Kita akan menangani ini di halaman tujuan dengan localStorage atau query parameter
+              localStorage.setItem('showProfileModal', 'true');
+            }
+          }
+
           setTimeout(() => {
             window.location.href = redirectPage;
           }, 1500);
         } else {
-          showToast("Akses ditolak: akun belum diberi peran yang benar.", "error");
+          toast("Akses ditolak: akun belum diberi peran yang benar.");
           await auth.signOut();
           loginBtn.disabled = false;
           loginText.textContent = "Masuk";
@@ -260,9 +304,9 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          showToast("Email atau kata sandi salah.", "error");
+          toast("Email atau kata sandi salah.");
         } else {
-          showToast("Gagal masuk. Periksa koneksi internet Anda.", "error");
+          toast("Gagal masuk. Periksa koneksi internet Anda.");
         }
       }
     };
@@ -274,15 +318,15 @@
       }
     });
 
-    // Registrasi Service Worker
+    // Daftarkan service worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+      window.addEventListener('load', function() {
         navigator.serviceWorker.register('/service-worker.js')
-          .then((registration) => {
-            console.log('SW registered: ', registration);
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
           })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
+          .catch(function(error) {
+            console.log('ServiceWorker registration failed: ', error);
           });
       });
     }
