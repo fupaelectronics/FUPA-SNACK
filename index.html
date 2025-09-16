@@ -158,12 +158,13 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // UID roles
+    // UID Admin
     const ADMIN_UIDS = new Set([
       "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
       "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
     ]);
 
+    // UID Karyawan
     const KARYAWAN_UIDS = new Set([
       "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
       "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
@@ -188,16 +189,18 @@
       setTimeout(() => { t.style.display = "none"; }, 2200);
     };
 
+    // Fungsi untuk mendapatkan role berdasarkan UID
+    function getRoleByUid(uid) {
+      if (ADMIN_UIDS.has(uid)) return 'admin';
+      if (KARYAWAN_UIDS.has(uid)) return 'karyawan';
+      return null;
+    }
+
     // Redirect berdasarkan role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.has(uid)) {
-        return "admin.html";
-      } else if (KARYAWAN_UIDS.has(uid)) {
-        return "karyawan.html";
-      } else {
-        auth.signOut();
-        return null;
-      }
+    function redirectByRole(role) {
+      if (role === 'admin') return "admin.html";
+      if (role === 'karyawan') return "karyawan.html";
+      return null;
     }
 
     // UI only: toggle password eye
@@ -234,13 +237,35 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
+        // Dapatkan role berdasarkan UID
+        const role = getRoleByUid(user.uid);
+        
+        if (!role) {
+          toast("Akses ditolak: akun tidak terdaftar.");
+          await auth.signOut();
+          loginBtn.disabled = false;
+          loginText.textContent = "Masuk";
+          loginSpinner.style.display = "none";
+          return;
+        }
+        
+        // Simpan data user ke Firestore jika belum ada
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        if (!userDoc.exists) {
+          await db.collection('users').doc(user.uid).set({
+            email: user.email,
+            role: role,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+        
         // Tampilkan pesan sukses
         loginText.textContent = "Berhasil!";
         successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        const redirectPage = redirectByRole(user.uid);
+        const redirectPage = redirectByRole(role);
         if (redirectPage) {
           setTimeout(() => {
             window.location.href = redirectPage;
