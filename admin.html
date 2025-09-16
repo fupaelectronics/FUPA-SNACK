@@ -122,7 +122,6 @@
           <div class="filter-item">
             <span class="material-symbols-rounded">today</span>
             <select id="fPeriode" class="filter-select">
-              <option value="all">Semua</option>
               <option value="harian">Harian</option>
               <option value="mingguan">Mingguan</option>
               <option value="bulanan">Bulanan</option>
@@ -137,6 +136,7 @@
           </div>
           <div class="filter-item">
             <select id="fShow" class="filter-select">
+              <option value="10">Tampilkan 10</option>
               <option value="50">Tampilkan 50</option>
               <option value="100">Tampilkan 100</option>
               <option value="200">Tampilkan 200</option>
@@ -160,7 +160,7 @@
             </thead>
             <tbody id="tableBody">
               <tr>
-                <td colspan="6" style="text-align:center">Memuat data presensi...</td>
+                <td colspan="6" style="text-align:center; padding:20px; opacity:.7">Memuat data presensi...</td>
               </tr>
             </tbody>
           </table>
@@ -196,7 +196,294 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Variabel global untuk aplikasi admin
+    let presensiData = [];
+    let filteredData = [];
+    
+    // Inisialisasi aplikasi admin
+    function initAdminApp() {
+      // Update waktu server secara berkala
+      updateServerTimeDisplay();
+      setInterval(updateServerTimeDisplay, 1000);
+      
+      // Muat data presensi
+      loadPresensiData();
+      
+      // Setup event listeners
+      setupEventListeners();
+      
+      // Set default date range
+      const today = new Date();
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(today.getDate() - 7);
+      
+      $('#fDari').valueAsDate = sevenDaysAgo;
+      $('#fSampai').valueAsDate = today;
+    }
+    
+    // Update tampilan waktu server
+    async function updateServerTimeDisplay() {
+      try {
+        const serverTime = await getServerTime();
+        $('#serverTime').textContent = formatDate(serverTime) + ', ' + formatTime(serverTime);
+      } catch (error) {
+        console.error('Error updating server time:', error);
+        $('#serverTime').textContent = 'Error memuat waktu server';
+      }
+    }
+    
+    // Setup event listeners
+    function setupEventListeners() {
+      // Apply filter button
+      $('#applyFilter').addEventListener('click', applyFilters);
+      
+      // Period filter change
+      $('#fPeriode').addEventListener('change', handlePeriodChange);
+      
+      // Export CSV button
+      $('#exportCsv').addEventListener('click', exportToCSV);
+      
+      // Profile button
+      $('#profileBtn').addEventListener('click', () => {
+        $('#profileDlg').showModal();
+      });
+      
+      // Name filter input (debounce)
+      let filterTimeout;
+      $('#fNama').addEventListener('input', () => {
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(applyFilters, 500);
+      });
+    }
+    
+    // Handle period filter change
+    function handlePeriodChange() {
+      const period = $('#fPeriode').value;
+      $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+      
+      // Set default dates based on period
+      const today = new Date();
+      let startDate = new Date();
+      
+      switch(period) {
+        case 'harian':
+          startDate.setDate(today.getDate() - 1);
+          break;
+        case 'mingguan':
+          startDate.setDate(today.getDate() - 7);
+          break;
+        case 'bulanan':
+          startDate.setMonth(today.getMonth() - 1);
+          break;
+        case 'tahunan':
+          startDate.setFullYear(today.getFullYear() - 1);
+          break;
+        case 'custom':
+          // Already handled by showing custom date range
+          return;
+      }
+      
+      $('#fDari').valueAsDate = startDate;
+      $('#fSampai').valueAsDate = today;
+      
+      applyFilters();
+    }
+    
+    // Load data presensi
+    async function loadPresensiData() {
+      try {
+        const presensiSnapshot = await db.collection('presensi')
+          .orderBy('waktu', 'desc')
+          .get();
+        
+        presensiData = [];
+        presensiSnapshot.forEach(doc => {
+          const data = doc.data();
+          presensiData.push({
+            id: doc.id,
+            ...data,
+            waktu: data.waktu.toDate() // Convert Firestore timestamp to JS Date
+          });
+        });
+        
+        applyFilters();
+      } catch (error) {
+        console.error('Error loading presensi data:', error);
+        $('#tableBody').innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align:center; padding:20px; opacity:.7">
+              Gagal memuat data presensi
+            </td>
+          </tr>
+        `;
+        toast('Gagal memuat data presensi', 'error');
+      }
+    }
+    
+    // Apply filters to data
+    function applyFilters() {
+      const namaFilter = $('#fNama').value.toLowerCase();
+      const period = $('#fPeriode').value;
+      const showLimit = $('#fShow').value;
+      
+      let filtered = presensiData;
+      
+      // Apply name filter
+      if (namaFilter) {
+        filtered = filtered.filter(item => 
+          item.nama && item.nama.toLowerCase().includes(namaFilter)
+        );
+      }
+      
+      // Apply period filter
+      if (period !== 'all') {
+        let startDate, endDate = new Date();
+        
+        switch(period) {
+          case 'harian':
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - 1);
+            break;
+          case 'mingguan':
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
+            break;
+          case 'bulanan':
+            startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 1);
+            break;
+          case 'tahunan':
+            startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 1);
+            break;
+          case 'custom':
+            startDate = new Date($('#fDari').value);
+            endDate = new Date($('#fSampai').value);
+            endDate.setHours(23, 59, 59, 999); // End of day
+            break;
+        }
+        
+        if (period !== 'custom') {
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(23, 59, 59, 999);
+        }
+        
+        filtered = filtered.filter(item => {
+          const itemDate = item.waktu;
+          return itemDate >= startDate && itemDate <= endDate;
+        });
+      }
+      
+      // Apply limit
+      if (showLimit !== 'all') {
+        filtered = filtered.slice(0, parseInt(showLimit));
+      }
+      
+      filteredData = filtered;
+      renderTable(filtered);
+    }
+    
+    // Render table with data
+    function renderTable(data) {
+      if (data.length === 0) {
+        $('#tableBody').innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align:center; padding:20px; opacity:.7">
+              Tidak ada data presensi
+            </td>
+          </tr>
+        `;
+        return;
+      }
+      
+      let html = '';
+      data.forEach(item => {
+        let statusClass = 's-bad';
+        if (item.status === 'Tepat Waktu') statusClass = 's-good';
+        if (item.status === 'Terlambat') statusClass = 's-warn';
+        
+        html += `
+          <tr>
+            <td>${formatDate(item.waktu)}<br>${formatTime(item.waktu)}</td>
+            <td>${item.nama || 'Tidak diketahui'}</td>
+            <td>${item.jenis}</td>
+            <td><span class="status ${statusClass}">${item.status}</span></td>
+            <td>${item.koordinat ? `${item.koordinat.latitude.toFixed(6)}, ${item.koordinat.longitude.toFixed(6)}` : 'Tidak ada'}</td>
+            <td><a href="${item.selfie}" target="_blank">Lihat Foto</a></td>
+          </tr>
+        `;
+      });
+      
+      $('#tableBody').innerHTML = html;
+    }
+    
+    // Export to CSV
+    function exportToCSV() {
+      if (filteredData.length === 0) {
+        toast('Tidak ada data untuk diekspor', 'warning');
+        return;
+      }
+      
+      try {
+        $('#exportCsv').disabled = true;
+        $('#exportCsv').innerHTML = '<span class="spinner"></span> Mengekspor...';
+        
+        // Group by name and sort alphabetically
+        const groupedByName = {};
+        filteredData.forEach(item => {
+          if (!groupedByName[item.nama]) {
+            groupedByName[item.nama] = [];
+          }
+          groupedByName[item.nama].push(item);
+        });
+        
+        // Sort names alphabetically
+        const sortedNames = Object.keys(groupedByName).sort();
+        
+        // Create CSV content
+        let csvContent = "Nama,Tanggal,Shift,Jenis,Status,Koordinat\n";
+        
+        sortedNames.forEach(name => {
+          // Sort items by date (oldest first)
+          const items = groupedByName[name].sort((a, b) => a.waktu - b.waktu);
+          
+          items.forEach(item => {
+            const date = formatDate(item.waktu);
+            const coordinates = item.koordinat ? 
+              `${item.koordinat.latitude.toFixed(6)},${item.koordinat.longitude.toFixed(6)}` : '';
+            
+            csvContent += `"${name}","${date}","${item.shift}","${item.jenis}","${item.status}","${coordinates}"\n`;
+          });
+          
+          // Add empty line between employees
+          csvContent += "\n";
+        });
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `presensi_${formatDate(new Date())}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        toast('CSV berhasil diekspor', 'success');
+      } catch (error) {
+        console.error('Error exporting CSV:', error);
+        toast('Gagal mengekspor CSV', 'error');
+      } finally {
+        $('#exportCsv').disabled = false;
+        $('#exportCsv').innerHTML = '<span class="material-symbols-rounded">download</span> Ekspor CSV';
+      }
+    }
+    
+    // Panggil inisialisasi aplikasi admin saat DOM siap
+    document.addEventListener('DOMContentLoaded', initAdminApp);
+  </script>
 </body>
 </html>
