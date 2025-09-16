@@ -119,12 +119,11 @@
         <h3 style="margin:0 0 8px">Ambil presensi</h3>
         <div class="row" style="justify-content:space-between">
           <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Memuat status...</span></span>
-          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
+          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendapatkan lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div id="cameraContainer" class="camera-placeholder">
+          <div class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
-            <div>Kamera siap</div>
           </div>
         </div>
         <div class="camera-controls">
@@ -143,19 +142,10 @@
         </div>
         <div class="hint" style="opacity:.8;margin-top:8px">
           Presensi Shift pagi:
-          Berangkat 05.30-06.30
+          Berangkat 05.30-06.00
           Pulang 10.00-11.00 | Presensi Shift sore:
           Berangkat 14.00-14.30
           Pulang 17.30-18.30 | Minta izin tidak berangkat wajib chat WhatsApp 081548262229 (Karomi)
-        </div>
-      </section>
-      
-      <section class="card">
-        <h3 style="margin:0 0 8px">Riwayat Presensi</h3>
-        <div id="riwayatContainer" style="max-height:300px; overflow-y:auto">
-          <div style="text-align:center; padding:20px; opacity:.7">
-            Memuat riwayat presensi...
-          </div>
         </div>
       </section>
     </div>
@@ -190,302 +180,312 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
   <script>
-    // Variabel global untuk aplikasi karyawan
+    // Inisialisasi Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      authDomain: "fupa-snack.firebaseapp.com",
+      projectId: "fupa-snack",
+      storageBucket: "fupa-snack.firebasestorage.app",
+      messagingSenderId: "972524876738",
+      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    // Elemen UI
+    const videoElement = document.createElement('video');
+    const canvasElement = document.createElement('canvas');
+    const context = canvasElement.getContext('2d');
     let stream = null;
     let capturedImage = null;
-    let currentLocation = null;
-    
-    // Inisialisasi aplikasi karyawan
-    function initKaryawanApp() {
-      // Update waktu server secara berkala
-      updateServerTimeDisplay();
-      setInterval(updateServerTimeDisplay, 1000);
-      
-      // Update status presensi
-      updatePresenceStatus();
-      setInterval(updatePresenceStatus, 60000); // Update setiap menit
-      
-      // Dapatkan lokasi pengguna
-      getLocation();
-      
-      // Muat riwayat presensi
-      loadRiwayatPresensi();
-      
-      // Setup event listeners
-      setupEventListeners();
-      
-      // Inisialisasi kamera
-      initCamera();
-    }
-    
-    // Update tampilan waktu server
-    async function updateServerTimeDisplay() {
+
+    // State
+    let currentUser = null;
+    let userData = null;
+    let serverTime = new Date();
+
+    // Fungsi untuk memulai kamera
+    async function startCamera() {
       try {
-        const serverTime = await getServerTime();
-        $('#serverTime').textContent = formatDate(serverTime) + ', ' + formatTime(serverTime);
-      } catch (error) {
-        console.error('Error updating server time:', error);
-        $('#serverTime').textContent = 'Error memuat waktu server';
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        videoElement.srcObject = stream;
+        videoElement.play();
+        // Ganti placeholder dengan video
+        const placeholder = document.querySelector('.camera-placeholder');
+        placeholder.innerHTML = '';
+        placeholder.appendChild(videoElement);
+      } catch (err) {
+        console.error("Error accessing camera: ", err);
+        toast('Tidak dapat mengakses kamera', 'error');
+        const placeholder = document.querySelector('.camera-placeholder');
+        placeholder.innerHTML = '<span>Kamera tidak dapat diakses</span>';
       }
     }
-    
-    // Update status presensi
-    async function updatePresenceStatus() {
-      try {
-        const serverTime = await getServerTime();
-        const shift = getShift(serverTime);
-        const jenis = $('#jenis').value;
-        const status = getStatusPresensi(serverTime, jenis, shift);
-        
-        const statusElement = $('#statusText');
-        const statusChip = $('#statusChip');
-        
-        statusElement.textContent = status;
-        
-        // Update warna status berdasarkan nilai
-        if (status === "Libur") {
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">' + status + '</span>';
-        } else if (status === "Tepat Waktu") {
-          statusChip.className = 'status s-good';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">check_circle</span><span id="statusText">' + status + '</span>';
-        } else if (status === "Terlambat") {
-          statusChip.className = 'status s-warn';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">' + status + '</span>';
+
+    // Fungsi untuk mengambil foto
+    function takePicture() {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+      context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+      capturedImage = canvasElement.toDataURL('image/png');
+      
+      // Tampilkan preview
+      const img = document.createElement('img');
+      img.src = capturedImage;
+      const placeholder = document.querySelector('.camera-placeholder');
+      placeholder.innerHTML = '';
+      placeholder.appendChild(img);
+      
+      // Aktifkan tombol upload
+      document.getElementById('uploadBtn').disabled = false;
+      
+      // Stop kamera
+      stopCamera();
+    }
+
+    // Fungsi untuk menghentikan kamera
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+    }
+
+    // Fungsi untuk mendapatkan lokasi
+    function getLocation() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation tidak didukung'));
         } else {
-          statusChip.className = 'status s-bad';
-          statusChip.innerHTML = '<span class="material-symbols-rounded">block</span><span id="statusText">' + status + '</span>';
+          navigator.geolocation.getCurrentPosition(
+            position => {
+              resolve({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              });
+            },
+            error => {
+              reject(error);
+            }
+          );
         }
-      } catch (error) {
-        console.error('Error updating presence status:', error);
-      }
-    }
-    
-    // Dapatkan lokasi pengguna
-    async function getLocation() {
-      try {
-        currentLocation = await getCurrentLocation();
-        $('#locText').textContent = currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6);
-      } catch (error) {
-        console.error('Error getting location:', error);
-        $('#locText').textContent = 'Gagal mendapatkan lokasi';
-        toast('Gagal mendapatkan lokasi. Pastikan izin lokasi diberikan.', 'error');
-      }
-    }
-    
-    // Inisialisasi kamera
-    async function initCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'user' }, 
-          audio: false 
-        });
-        
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.autoplay = true;
-        video.playsInline = true;
-        
-        $('#cameraContainer').innerHTML = '';
-        $('#cameraContainer').appendChild(video);
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        $('#cameraContainer').innerHTML = `
-          <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
-          <div>Kamera tidak dapat diakses</div>
-        `;
-        toast('Tidak dapat mengakses kamera. Pastikan izin kamera diberikan.', 'error');
-      }
-    }
-    
-    // Setup event listeners
-    function setupEventListeners() {
-      // Snap button
-      $('#snapBtn').addEventListener('click', captureImage);
-      
-      // Upload button
-      $('#uploadBtn').addEventListener('click', uploadPresensi);
-      
-      // Jenis presensi change
-      $('#jenis').addEventListener('change', updatePresenceStatus);
-      
-      // Profile button
-      $('#profileBtn').addEventListener('click', () => {
-        $('#profileDlg').showModal();
       });
     }
-    
-    // Capture image from camera
-    function captureImage() {
-      if (!stream) {
-        toast('Kamera belum siap', 'error');
-        return;
-      }
-      
+
+    // Fungsi untuk update UI berdasarkan status presensi
+    async function updateUI() {
       try {
-        const video = $('#cameraContainer').querySelector('video');
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        // Update waktu server
+        serverTime = await getServerTime();
+        document.getElementById('serverTime').textContent = formatDate(serverTime);
         
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Convert to blob
-        canvas.toBlob((blob) => {
-          capturedImage = blob;
-          
-          // Show preview
-          const img = document.createElement('img');
-          img.src = URL.createObjectURL(blob);
-          
-          $('#cameraContainer').innerHTML = '';
-          $('#cameraContainer').appendChild(img);
-          
-          // Enable upload button
-          $('#uploadBtn').disabled = false;
-          
-          toast('Foto berhasil diambil', 'success');
-        }, 'image/jpeg', 0.9);
-      } catch (error) {
-        console.error('Error capturing image:', error);
-        toast('Gagal mengambil foto', 'error');
-      }
-    }
-    
-    // Upload presensi
-    async function uploadPresensi() {
-      const user = auth.currentUser;
-      if (!user) {
-        toast('Anda belum login', 'error');
-        return;
-      }
-      
-      if (!capturedImage) {
-        toast('Ambil foto terlebih dahulu', 'error');
-        return;
-      }
-      
-      if (!currentLocation) {
-        toast('Lokasi belum terdeteksi', 'error');
-        return;
-      }
-      
-      try {
-        // Disable button and show loading
-        $('#uploadBtn').disabled = true;
-        $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
-        
-        // Get current server time
-        const serverTime = await getServerTime();
+        // Update shift
         const shift = getShift(serverTime);
-        const jenis = $('#jenis').value;
-        const status = getStatusPresensi(serverTime, jenis, shift);
         
-        // Check if already presensi for this type today
-        const sudahPresensi = await sudahPresensiHariIni(user.uid, jenis);
-        if (sudahPresensi && jenis !== 'izin') {
-          toast('Anda sudah melakukan presensi ' + jenis + ' hari ini', 'error');
-          $('#uploadBtn').disabled = false;
-          $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-          return;
+        // Update status presensi
+        const jenis = document.getElementById('jenis').value;
+        const status = getStatusPresensi(jenis, serverTime, shift);
+        const statusElement = document.getElementById('statusText');
+        statusElement.textContent = status;
+        
+        // Update class status
+        const statusChip = document.getElementById('statusChip');
+        statusChip.className = 'status ';
+        if (status === 'Tepat Waktu') {
+          statusChip.classList.add('s-good');
+        } else if (status === 'Terlambat') {
+          statusChip.classList.add('s-warn');
+        } else if (status === 'Libur') {
+          statusChip.classList.add('s-bad');
+        } else {
+          statusChip.classList.add('s-bad');
         }
         
-        // Compress and upload image
-        const compressedImage = await compressImage(capturedImage);
-        const imageUrl = await uploadToCloudinary(compressedImage);
-        
-        // Get user data
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        const userData = userDoc.data();
-        
-        // Save to Firestore
-        await db.collection('presensi').add({
-          userId: user.uid,
-          nama: userData.nama,
-          waktu: serverTime,
-          shift: jenis === 'izin' ? 'Penuh' : shift,
-          jenis: jenis,
-          status: status,
-          koordinat: new firebase.firestore.GeoPoint(currentLocation.lat, currentLocation.lng),
-          selfie: imageUrl,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        toast('Presensi berhasil dicatat', 'success');
-        
-        // Reset camera and enable snap button
-        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-        initCamera();
-        capturedImage = null;
-        
-        // Reload riwayat
-        loadRiwayatPresensi();
+        // Update lokasi
+        try {
+          const loc = await getLocation();
+          document.getElementById('locText').textContent = `${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}`;
+        } catch (error) {
+          document.getElementById('locText').textContent = 'Tidak dapat mendapatkan lokasi';
+        }
       } catch (error) {
-        console.error('Error uploading attendance:', error);
-        toast('Gagal mengupload presensi: ' + error.message, 'error');
-        $('#uploadBtn').disabled = false;
-        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        console.error('Error updating UI:', error);
       }
     }
-    
-    // Load riwayat presensi
-    async function loadRiwayatPresensi() {
-      const user = auth.currentUser;
-      if (!user) return;
+
+    // Event listener untuk DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Cek auth state
+      firebase.auth().onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          
+          // Cek apakah karyawan
+          const KARYAWAN_UIDS = new Set([
+            "7NJ9xoMgQlUbi68CMQWFN5bYvF62", "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", 
+            "vB3i5h6offMxQslKf2U0J1ElpWS2", "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", 
+            "zl7xjZaI6BdCLT7Z2WA34oTcFV42", "NainrtLo3BWRSJKImgIBYNLJEIv2", 
+            "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", 
+            "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", "pMbjHKjsZLWtNHi7PTc8cDJ254w2", 
+            "G0qTjLBc6MeRMPziNTzIT6N32ZM2"
+          ]);
+          
+          if (!KARYAWAN_UIDS.has(user.uid)) {
+            toast('Akses ditolak. Hanya karyawan yang dapat mengakses halaman ini.', 'error');
+            await firebase.auth().signOut();
+            window.location.href = 'index.html';
+            return;
+          }
+          
+          // Dapatkan data user dari Firestore
+          const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+          if (userDoc.exists) {
+            userData = userDoc.data();
+            // Isi form profil
+            document.getElementById('nama').value = userData.nama || '';
+            document.getElementById('alamat').value = userData.alamat || '';
+            if (userData.foto) {
+              document.getElementById('pfp').src = userData.foto;
+            }
+            
+            // Jika data profil kosong, tampilkan popup
+            if (!userData.nama || !userData.alamat) {
+              document.getElementById('profileDlg').showModal();
+            }
+          } else {
+            // Jika belum ada data, tampilkan popup
+            document.getElementById('profileDlg').showModal();
+          }
+          
+          // Mulai update UI
+          updateUI();
+          setInterval(updateUI, 60000); // Update setiap menit
+          
+          // Mulai kamera
+          startCamera();
+        } else {
+          // Tidak login, redirect ke index.html
+          window.location.href = 'index.html';
+        }
+      });
       
-      try {
-        const riwayatSnapshot = await db.collection('presensi')
-          .where('userId', '==', user.uid)
-          .orderBy('waktu', 'desc')
-          .limit(10)
-          .get();
+      // Event listener untuk tombol ambil foto
+      document.getElementById('snapBtn').addEventListener('click', takePicture);
+      
+      // Event listener untuk perubahan jenis presensi
+      document.getElementById('jenis').addEventListener('change', updateUI);
+      
+      // Event listener untuk tombol upload
+      document.getElementById('uploadBtn').addEventListener('click', async function() {
+        const jenis = document.getElementById('jenis').value;
+        const tanggal = formatDateOnly(serverTime);
         
-        if (riwayatSnapshot.empty) {
-          $('#riwayatContainer').innerHTML = `
-            <div style="text-align:center; padding:20px; opacity:.7">
-              Belum ada riwayat presensi
-            </div>
-          `;
+        // Cek apakah sudah presensi untuk jenis ini hari ini
+        const sudahPresensi = await sudahPresensiHariIni(currentUser.uid, jenis, serverTime);
+        if (sudahPresensi) {
+          toast('Anda sudah melakukan presensi ' + jenis + ' hari ini', 'error');
           return;
         }
         
-        let html = '';
-        riwayatSnapshot.forEach(doc => {
-          const data = doc.data();
-          const waktu = data.waktu.toDate();
-          
-          let statusClass = 's-bad';
-          if (data.status === 'Tepat Waktu') statusClass = 's-good';
-          if (data.status === 'Terlambat') statusClass = 's-warn';
-          
-          html += `
-            <div style="padding:10px; border-bottom:1px solid rgba(0,0,0,0.1)">
-              <div style="display:flex; justify-content:space-between; align-items:center">
-                <div style="font-weight:600">${formatDate(waktu)}</div>
-                <span class="status ${statusClass}">${data.status}</span>
-              </div>
-              <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:14px">
-                <div>${formatTime(waktu)} • ${data.jenis}</div>
-                <div>${data.shift}</div>
-              </div>
-            </div>
-          `;
-        });
+        // Dapatkan lokasi
+        let loc;
+        try {
+          loc = await getLocation();
+        } catch (error) {
+          toast('Tidak dapat mendapatkan lokasi', 'error');
+          return;
+        }
         
-        $('#riwayatContainer').innerHTML = html;
-      } catch (error) {
-        console.error('Error loading riwayat:', error);
-        $('#riwayatContainer').innerHTML = `
-          <div style="text-align:center; padding:20px; opacity:.7">
-            Error memuat riwayat
-          </div>
-        `;
-      }
-    }
-    
-    // Panggil inisialisasi aplikasi karyawan saat DOM siap
-    document.addEventListener('DOMContentLoaded', initKaryawanApp);
+        // Kompres gambar
+        let compressedImage;
+        try {
+          // Convert data URL to blob
+          const response = await fetch(capturedImage);
+          const blob = await response.blob();
+          compressedImage = await compressImage(blob);
+        } catch (error) {
+          toast('Gagal mengompres gambar', 'error');
+          return;
+        }
+        
+        // Upload ke Cloudinary
+        let imageUrl;
+        try {
+          imageUrl = await uploadToCloudinary(compressedImage);
+        } catch (error) {
+          toast('Gagal mengupload gambar', 'error');
+          return;
+        }
+        
+        // Tentukan shift dan status
+        const shift = getShift(serverTime);
+        const status = getStatusPresensi(jenis, serverTime, shift);
+        
+        // Simpan ke Firestore
+        try {
+          await tambahPresensi({
+            userId: currentUser.uid,
+            nama: userData.nama,
+            jenis: jenis,
+            shift: shift,
+            status: status,
+            koordinat: `${loc.latitude}, ${loc.longitude}`,
+            foto: imageUrl,
+            tanggal: tanggal,
+            waktu: serverTime
+          });
+          toast('Presensi berhasil dicatat', 'success');
+          // Reset camera
+          capturedImage = null;
+          document.getElementById('uploadBtn').disabled = true;
+          startCamera();
+        } catch (error) {
+          console.error('Error saving presence:', error);
+          toast('Gagal menyimpan presensi', 'error');
+        }
+      });
+      
+      // Event listener untuk dialog profil
+      document.getElementById('saveProfileBtn').addEventListener('click', async function() {
+        const nama = document.getElementById('nama').value;
+        const alamat = document.getElementById('alamat').value;
+        const file = document.getElementById('pfpFile').files[0];
+        
+        let fotoUrl = userData ? userData.foto : null;
+        
+        // Jika ada file foto, upload ke Cloudinary
+        if (file) {
+          try {
+            const compressedImage = await compressImage(file);
+            fotoUrl = await uploadToCloudinary(compressedImage);
+          } catch (error) {
+            toast('Gagal mengupload foto', 'error');
+            return;
+          }
+        }
+        
+        // Simpan ke Firestore
+        try {
+          await firebase.firestore().collection('users').doc(currentUser.uid).set({
+            nama: nama,
+            alamat: alamat,
+            foto: fotoUrl
+          }, { merge: true });
+          toast('Profil berhasil disimpan', 'success');
+          document.getElementById('profileDlg').close();
+          // Update userData
+          userData = { ...userData, nama, alamat, foto: fotoUrl };
+        } catch (error) {
+          toast('Gagal menyimpan profil', 'error');
+        }
+      });
+      
+      // Event listener untuk logout
+      document.getElementById('logoutBtn').addEventListener('click', function() {
+        firebase.auth().signOut().then(() => {
+          window.location.href = 'index.html';
+        });
+      });
+    });
   </script>
 </body>
 </html>
