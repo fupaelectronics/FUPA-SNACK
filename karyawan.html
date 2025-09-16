@@ -83,18 +83,6 @@
       color: white;
       font-size: 16px;
     }
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
   </style>
 </head>
 <body>
@@ -122,11 +110,11 @@
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
+          <video id="video" autoplay playsinline style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></video>
+          <canvas id="canvas" style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></canvas>
           <div id="cameraPlaceholder" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
-          <video id="cameraPreview" autoplay playsinline style="display:none"></video>
-          <img id="photoPreview" style="display:none" />
         </div>
         <div class="camera-controls">
           <div class="input">
@@ -148,19 +136,6 @@
           Pulang 10.00-11.00 | Presensi Shift sore:
           Berangkat 14.00-14.30
           Pulang 17.30-18.30 | Minta izin tidak berangkat wajib chat WhatsApp 081548262229 (Karomi)
-        </div>
-      </section>
-
-      <section class="card">
-        <h3 style="margin:0 0 8px">Informasi Shift</h3>
-        <div class="row">
-          <span class="chip"><span class="material-symbols-rounded">schedule</span>Shift: <span id="shiftText">Memuat...</span></span>
-        </div>
-        <div style="margin-top:16px">
-          <h4 style="margin:0 0 8px">Riwayat Presensi Hari Ini</h4>
-          <div id="todayPresence" style="max-height:200px; overflow:auto">
-            <div style="text-align:center; padding:20px; opacity:.7">Memuat riwayat...</div>
-          </div>
         </div>
       </section>
     </div>
@@ -194,5 +169,209 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Inisialisasi variabel
+    let currentUser = null;
+    let stream = null;
+    let capturedImage = null;
+
+    // Elemen UI
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+    const snapBtn = document.getElementById('snapBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const jenisSelect = document.getElementById('jenis');
+    const statusText = document.getElementById('statusText');
+    const statusChip = document.getElementById('statusChip');
+    const locText = document.getElementById('locText');
+
+    // Fungsi untuk memulai kamera
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        video.style.display = 'block';
+        cameraPlaceholder.style.display = 'none';
+      } catch (err) {
+        console.error("Error accessing camera: ", err);
+        toast('Tidak dapat mengakses kamera', 'error');
+      }
+    }
+
+    // Fungsi untuk mengambil foto
+    function takePicture() {
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      capturedImage = canvas.toDataURL('image/png');
+      video.style.display = 'none';
+      canvas.style.display = 'block';
+      uploadBtn.disabled = false;
+    }
+
+    // Fungsi untuk menghentikan kamera
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    // Fungsi untuk update status presensi
+    function updateStatusPresensi() {
+      const now = new Date();
+      const shift = getShift(now);
+      const jenis = jenisSelect.value;
+      const status = getStatusPresensi(now, jenis, shift);
+
+      statusText.textContent = status;
+      // Update class statusChip berdasarkan status
+      statusChip.className = 'status ';
+      if (status === 'Tepat Waktu' || status === 'Izin') {
+        statusChip.classList.add('s-good');
+      } else if (status === 'Terlambat') {
+        statusChip.classList.add('s-warn');
+      } else {
+        statusChip.classList.add('s-bad');
+      }
+    }
+
+    // Fungsi untuk mendapatkan lokasi
+    function getLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            locText.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          },
+          (error) => {
+            console.error("Error getting location: ", error);
+            locText.textContent = 'Tidak dapat mendapatkan lokasi';
+          }
+        );
+      } else {
+        locText.textContent = 'Geolocation tidak didukung';
+      }
+    }
+
+    // Event listener ketika halaman dimuat
+    document.addEventListener('DOMContentLoaded', function() {
+      // Mulai kamera
+      startCamera();
+
+      // Dapatkan lokasi
+      getLocation();
+
+      // Update waktu server setiap detik
+      setInterval(updateServerTime, 1000);
+
+      // Update status presensi ketika jenis berubah
+      jenisSelect.addEventListener('change', updateStatusPresensi);
+
+      // Snap button event
+      snapBtn.addEventListener('click', takePicture);
+
+      // Upload button event
+      uploadBtn.addEventListener('click', async () => {
+        if (!capturedImage) {
+          toast('Ambil foto terlebih dahulu', 'error');
+          return;
+        }
+
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<span class="spinner"></span> Mengupload...';
+
+        try {
+          // Dapatkan data user
+          const user = auth.currentUser;
+          if (!user) {
+            throw new Error('User tidak terautentikasi');
+          }
+
+          // Dapatkan data profil user
+          const userDoc = await getUserData(user.uid);
+          const userData = userDoc.data();
+
+          // Dapatkan waktu server
+          const waktu = new Date(); // Kita gunakan waktu client, tapi seharusnya serverTimestamp
+
+          // Tentukan shift
+          const shift = getShift(waktu);
+
+          // Tentukan status
+          const jenis = jenisSelect.value;
+          const status = getStatusPresensi(waktu, jenis, shift);
+
+          // Kompres gambar
+          const compressedImage = await compressImage(capturedImage);
+
+          // Upload ke Cloudinary
+          const imageUrl = await uploadToCloudinary(compressedImage);
+
+          // Simpan data presensi ke Firestore
+          await addPresensi({
+            uid: user.uid,
+            nama: userData.nama,
+            waktu: firebase.firestore.FieldValue.serverTimestamp(),
+            shift: shift,
+            jenis: jenis,
+            status: status,
+            koordinat: locText.textContent,
+            selfie: imageUrl
+          });
+
+          toast('Presensi berhasil dicatat', 'success');
+          
+          // Reset camera
+          capturedImage = null;
+          canvas.style.display = 'none';
+          video.style.display = 'block';
+          uploadBtn.disabled = true;
+          uploadBtn.innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        } catch (error) {
+          console.error('Error uploading presensi: ', error);
+          toast('Gagal mengupload presensi: ' + error.message, 'error');
+          uploadBtn.disabled = false;
+          uploadBtn.innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        }
+      });
+
+      // Profile dialog
+      document.getElementById('profileBtn').addEventListener('click', () => {
+        document.getElementById('profileDlg').showModal();
+      });
+
+      // Save profile
+      document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+        const nama = document.getElementById('nama').value;
+        const alamat = document.getElementById('alamat').value;
+
+        if (!nama || !alamat) {
+          toast('Nama dan alamat harus diisi', 'error');
+          return;
+        }
+
+        try {
+          await updateProfile(currentUser.uid, { nama, alamat });
+          toast('Profil berhasil disimpan', 'success');
+          document.getElementById('profileDlg').close();
+        } catch (error) {
+          toast('Gagal menyimpan profil: ' + error.message, 'error');
+        }
+      });
+
+      // Logout
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        logout();
+      });
+    });
+
+    // Clean up ketika tab ditutup atau navigasi
+    window.addEventListener('beforeunload', () => {
+      stopCamera();
+    });
+  </script>
 </body>
 </html>
