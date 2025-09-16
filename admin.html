@@ -49,11 +49,6 @@
     th, td{ text-align:left; padding:10px 12px; background:#fff }
     th{ position:sticky; top:0; z-index:1; background: #FFD54F; }
     tr{ box-shadow:0 1px 0 rgba(0,0,0,.06) }
-    .fab{
-      position:fixed; right:16px; bottom:16px; z-index:6; width:56px; height:56px; border-radius:50%;
-      display:grid; place-items:center; background:linear-gradient(135deg,#FF8F00,#FF6F00); color:#fff; box-shadow:var(--soft-shadow);
-      cursor:pointer;
-    }
     dialog{ border:none; border-radius:16px; width:min(720px,92vw); padding:0; box-shadow:var(--soft-shadow); overflow:hidden; }
     .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff}
     .dlg-body{padding:14px; background:#fff}
@@ -79,19 +74,6 @@
       border: 1px solid rgba(0,0,0,0.1);
       background: white;
     }
-    .badge {
-      position: absolute;
-      top: -5px;
-      right: -5px;
-      background: red;
-      color: white;
-      border-radius: 50%;
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-      display: grid;
-      place-items: center;
-    }
     .spinner {
       display: inline-block;
       width: 16px;
@@ -103,50 +85,6 @@
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
-    }
-    .cuti-item {
-      padding: 12px;
-      border-bottom: 1px solid #eee;
-    }
-    .cuti-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .user-list {
-      max-height: 200px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 8px;
-      padding: 8px;
-      margin-top: 8px;
-    }
-    .user-item {
-      padding: 6px 8px;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .user-item:hover {
-      background-color: #f5f5f5;
-    }
-    .user-item.selected {
-      background-color: #FFD54F;
-      color: #222;
-    }
-    .install-btn {
-      position: fixed;
-      left: 16px;
-      bottom: 16px;
-      z-index: 6;
-      background: linear-gradient(135deg, #673AB7, #4527A0);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: var(--soft-shadow);
-      display: none;
     }
   </style>
 </head>
@@ -160,12 +98,6 @@
       </div>
     </div>
     <div class="icons">
-      <div style="position:relative">
-        <button id="notifBtn" class="icon-btn" title="Permintaan cuti">
-          <span class="material-symbols-rounded">notifications_active</span>
-          <span id="notifBadge" class="badge" style="display:none">0</span>
-        </button>
-      </div>
       <button id="profileBtn" class="icon-btn" title="Profil & akun">
         <span class="material-symbols-rounded">admin_panel_settings</span>
       </button>
@@ -204,9 +136,9 @@
           </div>
           <div class="filter-item">
             <select id="fShow" class="filter-select">
-              <option value="20">Tampilkan 20</option>
               <option value="50">Tampilkan 50</option>
               <option value="100">Tampilkan 100</option>
+              <option value="200">Tampilkan 200</option>
               <option value="all">Tampilkan Semua</option>
             </select>
             <button id="applyFilter" class="btn"><span class="material-symbols-rounded">filter_alt</span> Terapkan</button>
@@ -235,44 +167,13 @@
       </section>
 
       <section class="card">
-        <h3 style="margin:0 0 8px">Pengaturan & pengumuman</h3>
-        <div class="row">
-          <div class="input">
-            <span class="material-symbols-rounded">event_busy</span>
-            <select id="wajibHari">
-              <option value="auto">Sesuai aturan: Minggu non-presensi</option>
-              <option value="forceOn">Paksa wajib presensi hari ini</option>
-              <option value="forceOff">Paksa tidak wajib presensi hari ini</option>
-            </select>
-          </div>
-          <button id="saveSchedule" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <div class="input" style="flex:1"><span class="material-symbols-rounded">campaign</span>
-            <textarea id="announceText" placeholder="Tulis pengumuman untuk karyawan" rows="3" style="width:100%"></textarea>
-          </div>
-          <div class="input">
-            <span class="material-symbols-rounded">person</span>
-            <select id="announceTarget">
-              <option value="all">Semua Karyawan</option>
-              <option value="specific">Karyawan Tertentu</option>
-            </select>
-          </div>
-          <button id="sendAnnounce" class="btn"><span class="material-symbols-rounded">send</span> Kirim</button>
-        </div>
-        <div id="userSelection" style="display:none; margin-top:10px">
-          <div class="user-list" id="userList">
-            <div class="user-item">Memuat daftar karyawan...</div>
-          </div>
+        <h3 style="margin:0 0 8px">Statistik Presensi</h3>
+        <div id="statsContainer">
+          <div style="text-align:center; padding:20px; opacity:.7">Memuat statistik...</div>
         </div>
       </section>
     </div>
   </div>
-
-  <!-- Install button -->
-  <button class="install-btn" id="installBtn" style="display:none">
-    <span class="material-symbols-rounded">download</span> Install App
-  </button>
 
   <!-- Dialog profil admin -->
   <dialog id="profileDlg">
@@ -282,7 +183,7 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
@@ -296,220 +197,11 @@
     </div>
   </dialog>
 
-  <!-- Dialog notifikasi (permintaan cuti) -->
-  <dialog id="notifDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">approval</span><b>Permintaan cuti</b></div>
-      <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body" id="cutiList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div class="cuti-item">Memuat permintaan cuti...</div>
-    </div>
-  </dialog>
-
   <div class="toast" id="toast"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
-  <script>
-    // Variabel global untuk halaman admin
-    let allPresences = [];
-    let filteredPresences = [];
-
-    // Elemen UI
-    const serverTimeElement = document.getElementById('serverTime');
-    const tableBody = document.getElementById('tableBody');
-    const exportCsvBtn = document.getElementById('exportCsv');
-    const applyFilterBtn = document.getElementById('applyFilter');
-    const fNama = document.getElementById('fNama');
-    const fPeriode = document.getElementById('fPeriode');
-    const fShow = document.getElementById('fShow');
-    const customDateRange = document.getElementById('customDateRange');
-    const fDari = document.getElementById('fDari');
-    const fSampai = document.getElementById('fSampai');
-
-    // Fungsi untuk mengupdate waktu server
-    function updateServerTime() {
-      serverTimeElement.textContent = getWaktuIndonesia();
-    }
-
-    // Fungsi untuk memuat semua data presensi
-    async function loadAllPresences() {
-      try {
-        const snapshot = await db.collection('presences')
-          .orderBy('createdAt', 'desc')
-          .get();
-        
-        allPresences = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          data.id = doc.id;
-          data.createdAt = data.createdAt.toDate();
-          allPresences.push(data);
-        });
-        
-        applyFilters();
-      } catch (error) {
-        console.error('Error loading presences: ', error);
-        toast('Gagal memuat data presensi', 'error');
-      }
-    }
-
-    // Fungsi untuk menerapkan filter
-    function applyFilters() {
-      let filtered = [...allPresences];
-      
-      // Filter nama
-      const namaFilter = fNama.value.toLowerCase();
-      if (namaFilter) {
-        filtered = filtered.filter(p => p.nama.toLowerCase().includes(namaFilter));
-      }
-      
-      // Filter periode
-      const period = fPeriode.value;
-      const now = new Date();
-      
-      if (period === 'harian') {
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        filtered = filtered.filter(p => p.createdAt >= today);
-      } else if (period === 'mingguan') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(p => p.createdAt >= weekAgo);
-      } else if (period === 'bulanan') {
-        const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        filtered = filtered.filter(p => p.createdAt >= monthAgo);
-      } else if (period === 'tahunan') {
-        const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        filtered = filtered.filter(p => p.createdAt >= yearAgo);
-      } else if (period === 'custom') {
-        const dari = new Date(fDari.value);
-        const sampai = new Date(fSampai.value);
-        sampai.setHours(23, 59, 59, 999); // Sampai akhir hari
-        filtered = filtered.filter(p => p.createdAt >= dari && p.createdAt <= sampai);
-      }
-      
-      // Batasi jumlah yang ditampilkan
-      const limit = fShow.value;
-      if (limit !== 'all') {
-        filtered = filtered.slice(0, parseInt(limit));
-      }
-      
-      filteredPresences = filtered;
-      renderTable();
-    }
-
-    // Fungsi untuk merender tabel
-    function renderTable() {
-      tableBody.innerHTML = '';
-      
-      if (filteredPresences.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
-        return;
-      }
-      
-      filteredPresences.forEach(presence => {
-        const waktu = presence.createdAt;
-        const waktuStr = waktu.toLocaleDateString('id-ID', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        });
-        
-        const statusClass = presence.status === 'Tepat Waktu' ? 's-good' : 
-                          presence.status === 'Terlambat' ? 's-warn' : 's-bad';
-        
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${waktuStr}</td>
-          <td>${presence.nama}</td>
-          <td>${presence.jenis}</td>
-          <td><span class="status ${statusClass}">${presence.status}</span></td>
-          <td>${presence.latitude}, ${presence.longitude}</td>
-          <td><a href="${presence.photoUrl}" target="_blank">Lihat Foto</a></td>
-        `;
-        tableBody.appendChild(row);
-      });
-    }
-
-    // Fungsi untuk mengekspor CSV
-    function exportToCSV() {
-      if (filteredPresences.length === 0) {
-        toast('Tidak ada data untuk diekspor', 'warning');
-        return;
-      }
-      
-      // Format data sesuai STDR
-      const sortedData = [...filteredPresences].sort((a, b) => {
-        // Urutkan berdasarkan nama (A-Z)
-        const nameCompare = a.nama.localeCompare(b.nama);
-        if (nameCompare !== 0) return nameCompare;
-        
-        // Jika nama sama, urutkan berdasarkan tanggal
-        return a.createdAt - b.createdAt;
-      });
-      
-      let csvContent = 'Waktu,Nama,Shift,Jenis,Status,Latitude,Longitude,Photo URL\n';
-      
-      sortedData.forEach(presence => {
-        const waktu = presence.createdAt.toLocaleDateString('id-ID', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        });
-        
-        csvContent += `"${waktu}","${presence.nama}","${presence.shift}","${presence.jenis}","${presence.status}","${presence.latitude}","${presence.longitude}","${presence.photoUrl}"\n`;
-      });
-      
-      // Buat file dan download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      
-      link.setAttribute('href', url);
-      link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast('CSV berhasil diekspor', 'success');
-    }
-
-    // Event listeners
-    document.addEventListener('DOMContentLoaded', function() {
-      // Update waktu server
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-      
-      // Load data presensi
-      loadAllPresences();
-      
-      // Export CSV
-      exportCsvBtn.addEventListener('click', exportToCSV);
-      
-      // Apply filters
-      applyFilterBtn.addEventListener('click', applyFilters);
-      
-      // Toggle custom date range
-      fPeriode.addEventListener('change', () => {
-        customDateRange.style.display = fPeriode.value === 'custom' ? 'flex' : 'none';
-      });
-      
-      // Set default dates for custom range
-      const today = new Date();
-      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-      fDari.value = weekAgo.toISOString().split('T')[0];
-      fSampai.value = today.toISOString().split('T')[0];
-    });
-  </script>
 </body>
 </html>
