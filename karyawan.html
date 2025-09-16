@@ -57,11 +57,6 @@
     .s-warn{background:var(--warn)}
     .s-bad{background:var(--bad)}
     video, canvas, img{width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover}
-    .fab{
-      position:fixed; right:16px; bottom:16px; z-index:6; width:56px; height:56px; border-radius:50%;
-      display:grid; place-items:center; background:linear-gradient(135deg,#FF8F00,#FF6F00); color:#fff; box-shadow:var(--soft-shadow);
-      cursor:pointer;
-    }
     dialog{
       border:none; border-radius:16px; width:min(520px,90vw); padding:0; box-shadow:var(--soft-shadow);
       animation:pop .2s ease; overflow:hidden;
@@ -77,19 +72,16 @@
       color:#fff; padding:10px 14px; border-radius:12px; 
       box-shadow:var(--soft-shadow); z-index:10; display:none; 
     }
-    .notif-item {
+    .camera-placeholder {
+      width: 100%;
+      height: 300px;
+      background: #333;
+      border-radius: 12px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 10px;
-      border-bottom: 1px solid #eee;
-    }
-    .notif-content {
-      flex: 1;
-    }
-    .notif-actions {
-      display: flex;
-      gap: 8px;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
     }
     .spinner {
       display: inline-block;
@@ -103,78 +95,6 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    .riwayat-item {
-      padding: 10px;
-      border-bottom: 1px solid #eee;
-    }
-    .riwayat-jenis {
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .riwayat-time {
-      font-size: 14px;
-      opacity: 0.8;
-      margin-top: 4px;
-    }
-    .filter-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .filter-select {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid rgba(0,0,0,0.1);
-      background: white;
-    }
-    .badge {
-      position: absolute;
-      top: -5px;
-      right: -5px;
-      background: red;
-      color: white;
-      border-radius: 50%;
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-      display: grid;
-      place-items: center;
-    }
-    .camera-controls {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-top: 12px;
-    }
-    .install-btn {
-      position: fixed;
-      left: 16px;
-      bottom: 16px;
-      z-index: 6;
-      background: linear-gradient(135deg, #673AB7, #4527A0);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: var(--soft-shadow);
-      display: none;
-    }
-    .camera-placeholder {
-      width: 100%;
-      height: 300px;
-      background: #333;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 16px;
-    }
   </style>
 </head>
 <body>
@@ -187,12 +107,6 @@
       </div>
     </div>
     <div class="icons">
-      <div style="position:relative">
-        <button id="notifBtn" class="icon-btn" title="Notifikasi">
-          <span class="material-symbols-rounded">notifications</span>
-          <span id="notifBadge" class="badge" style="display:none">0</span>
-        </button>
-      </div>
       <button id="profileBtn" class="icon-btn" title="Profil">
         <span class="material-symbols-rounded">account_circle</span>
       </button>
@@ -208,15 +122,19 @@
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <video id="video" autoplay playsinline style="display:block"></video>
-          <canvas id="canvas" style="display:none"></canvas>
+          <div id="cameraPlaceholder" class="camera-placeholder">
+            <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+          </div>
+          <video id="cameraPreview" autoplay playsinline style="display:none"></video>
+          <img id="photoPreview" style="display:none" />
         </div>
         <div class="camera-controls">
           <div class="input">
             <span class="material-symbols-rounded">assignment</span>
             <select id="jenis">
-              <option value="berangkat">Presensi berangkat</option>
-              <option value="pulang">Presensi pulang</option>
+              <option value="berangkat">Berangkat</option>
+              <option value="pulang">Pulang</option>
+              <option value="izin">Izin</option>
             </select>
           </div>
           <div class="row">
@@ -225,36 +143,28 @@
           </div>
         </div>
         <div class="hint" style="opacity:.8;margin-top:8px">
-          Presensi hanya pada 05:30–06:00 (berangkat) dan 10:00–11:00 (pulang). Di luar ini akan ditolak atau ditandai terlambat.
+          Presensi Shift pagi:
+          Berangkat 05.30-06.30
+          Pulang 10.00-11.00 | Presensi Shift sore:
+          Berangkat 14.00-14.30
+          Pulang 17.30-18.30 | Minta izin tidak berangkat wajib chat WhatsApp 081548262229 (Karomi)
         </div>
       </section>
 
       <section class="card">
-        <div class="filter-row">
-          <h3 style="margin:0">Riwayat presensi</h3>
-          <select id="historyFilter" class="filter-select">
-            <option value="20">20 terbaru</option>
-            <option value="50">50 terbaru</option>
-            <option value="100">100 terbaru</option>
-            <option value="all">Semua</option>
-          </select>
+        <h3 style="margin:0 0 8px">Informasi Shift</h3>
+        <div class="row">
+          <span class="chip"><span class="material-symbols-rounded">schedule</span>Shift: <span id="shiftText">Memuat...</span></span>
         </div>
-        <div id="logList" style="display:grid; gap:8px; max-height:400px; overflow-y:auto">
-          <div class="riwayat-item">Memuat riwayat presensi...</div>
+        <div style="margin-top:16px">
+          <h4 style="margin:0 0 8px">Riwayat Presensi Hari Ini</h4>
+          <div id="todayPresence" style="max-height:200px; overflow:auto">
+            <div style="text-align:center; padding:20px; opacity:.7">Memuat riwayat...</div>
+          </div>
         </div>
       </section>
     </div>
   </div>
-
-  <!-- FAB cuti -->
-  <button class="fab" id="cutiFab" title="Ajukan cuti">
-    <span class="material-symbols-rounded">event</span>
-  </button>
-
-  <!-- Install button -->
-  <button class="install-btn" id="installBtn" style="display:none">
-    <span class="material-symbols-rounded">download</span> Install App
-  </button>
 
   <!-- Dialog profil -->
   <dialog id="profileDlg">
@@ -264,7 +174,7 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
@@ -278,238 +188,11 @@
     </div>
   </dialog>
 
-  <!-- Dialog notifikasi -->
-  <dialog id="notifDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">notifications</span><b>Notifikasi</b></div>
-      <button class="icon-btn" onclick="document.getElementById('notifDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body" id="notifList" style="display:grid; gap:10px; max-height:60vh; overflow-y:auto">
-      <div class="notif-item">Memuat notifikasi...</div>
-    </div>
-  </dialog>
-
-  <!-- Dialog cuti -->
-  <dialog id="cutiDlg">
-    <div class="dlg-head">
-      <div class="row"><span class="material-symbols-rounded">event</span><b>Ajukan cuti</b></div>
-      <button class="icon-btn" onclick="document.getElementById('cutiDlg').close()"><span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="dlg-body">
-      <div class="row">
-        <div class="input"><span class="material-symbols-rounded">category</span>
-          <select id="cutiJenis">
-            <option value="izin">Izin</option>
-            <option value="sakit">Sakit</option>
-            <option value="cuti">Cuti</option>
-          </select>
-        </div>
-        <div class="input"><span class="material-symbols-rounded">today</span><input id="cutiTanggal" type="date" /></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">notes</span><input id="cutiCatatan" placeholder="Keterangan (opsional)" /></div>
-        <button id="ajukanCutiBtn" class="btn"><span class="material-symbols-rounded">send</span> Ajukan</button>
-      </div>
-    </div>
-  </dialog>
-
   <div class="toast" id="toast"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
-  <script>
-    // Variabel global untuk halaman karyawan
-    let stream = null;
-    let capturedPhoto = null;
-
-    // Elemen UI
-    const videoElement = document.getElementById('video');
-    const canvasElement = document.getElementById('canvas');
-    const snapBtn = document.getElementById('snapBtn');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const jenisSelect = document.getElementById('jenis');
-    const statusChip = document.getElementById('statusChip');
-    const statusText = document.getElementById('statusText');
-    const locText = document.getElementById('locText');
-    const serverTimeElement = document.getElementById('serverTime');
-    const historyFilter = document.getElementById('historyFilter');
-    const logList = document.getElementById('logList');
-
-    // Fungsi untuk mengupdate waktu server
-    function updateServerTime() {
-      serverTimeElement.textContent = getWaktuIndonesia();
-    }
-
-    // Fungsi untuk memulai kamera
-    async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        videoElement.srcObject = stream;
-      } catch (err) {
-        console.error("Error accessing camera: ", err);
-        toast('Tidak dapat mengakses kamera', 'error');
-      }
-    }
-
-    // Fungsi untuk mengambil foto
-    function takePicture() {
-      const context = canvasElement.getContext('2d');
-      canvasElement.width = videoElement.videoWidth;
-      canvasElement.height = videoElement.videoHeight;
-      context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-      capturedPhoto = canvasElement.toDataURL('image/png');
-      // Tampilkan preview
-      const imgElement = document.createElement('img');
-      imgElement.src = capturedPhoto;
-      // Ganti video dengan gambar
-      videoElement.style.display = 'none';
-      canvasElement.style.display = 'block';
-      uploadBtn.disabled = false;
-    }
-
-    // Fungsi untuk mengupload presensi
-    async function uploadPresence() {
-      if (!capturedPhoto) {
-        toast('Ambil foto terlebih dahulu', 'error');
-        return;
-      }
-
-      const jenis = jenisSelect.value;
-      const shift = userData.shift || 'pagi'; // Default shift pagi, bisa diambil dari userData
-
-      try {
-        uploadBtn.disabled = true;
-        uploadBtn.innerHTML = '<span class="spinner"></span> Mengupload...';
-
-        // Dapatkan lokasi
-        const location = await getLocation();
-        locText.textContent = `${location.latitude}, ${location.longitude}`;
-
-        // Kompres gambar
-        const blob = dataURLToBlob(capturedPhoto);
-        const compressedBlob = await compressImage(blob, 10);
-
-        // Upload ke Cloudinary
-        const photoUrl = await uploadToCloudinary(compressedBlob);
-
-        // Waktu server
-        const timestamp = getServerTimestamp();
-        const waktu = new Date();
-
-        // Status presensi
-        const status = getStatusPresensi(shift, jenis, waktu);
-
-        // Simpan ke Firestore
-        await db.collection('presences').add({
-          uid: currentUser.uid,
-          nama: userData.nama,
-          email: currentUser.email,
-          jenis,
-          shift,
-          status,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          photoUrl,
-          createdAt: timestamp
-        });
-
-        toast('Presensi berhasil dicatat', 'success');
-        // Reset
-        capturedPhoto = null;
-        canvasElement.style.display = 'none';
-        videoElement.style.display = 'block';
-        uploadBtn.disabled = true;
-        uploadBtn.innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-        // Muat ulang riwayat
-        loadPresenceHistory();
-      } catch (error) {
-        console.error('Error uploading presence: ', error);
-        toast('Gagal mengupload presensi', 'error');
-        uploadBtn.disabled = false;
-        uploadBtn.innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-      }
-    }
-
-    // Fungsi untuk memuat riwayat presensi
-    async function loadPresenceHistory() {
-      try {
-        let query = db.collection('presences')
-          .where('uid', '==', currentUser.uid)
-          .orderBy('createdAt', 'desc');
-
-        const limit = historyFilter.value;
-        if (limit !== 'all') {
-          query = query.limit(parseInt(limit));
-        }
-
-        const snapshot = await query.get();
-        logList.innerHTML = '';
-
-        if (snapshot.empty) {
-          logList.innerHTML = '<div class="riwayat-item">Tidak ada riwayat presensi</div>';
-          return;
-        }
-
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const waktu = data.createdAt.toDate();
-          const options = { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-          };
-          const waktuStr = waktu.toLocaleDateString('id-ID', options);
-
-          const statusClass = data.status === 'Tepat Waktu' ? 's-good' : data.status === 'Terlambat' ? 's-warn' : 's-bad';
-
-          const item = document.createElement('div');
-          item.className = 'riwayat-item';
-          item.innerHTML = `
-            <div class="riwayat-jenis">
-              <span class="material-symbols-rounded">${data.jenis === 'berangkat' ? 'login' : 'logout'}</span>
-              ${data.jenis}
-              <span class="status ${statusClass}" style="margin-left:auto;font-size:12px">
-                ${data.status}
-              </span>
-            </div>
-            <div class="riwayat-time">
-              ${waktuStr}
-            </div>
-          `;
-          logList.appendChild(item);
-        });
-      } catch (error) {
-        console.error('Error loading presence history: ', error);
-        toast('Gagal memuat riwayat presensi', 'error');
-      }
-    }
-
-    // Event listeners
-    document.addEventListener('DOMContentLoaded', function() {
-      // Mulai kamera
-      startCamera();
-
-      // Update waktu server
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-
-      // Snap button
-      snapBtn.addEventListener('click', takePicture);
-
-      // Upload button
-      uploadBtn.addEventListener('click', uploadPresence);
-
-      // Load riwayat presensi
-      loadPresenceHistory();
-
-      // Filter riwayat
-      historyFilter.addEventListener('change', loadPresenceHistory);
-    });
-  </script>
 </body>
 </html>
