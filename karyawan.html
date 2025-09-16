@@ -95,6 +95,19 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    .camera-container {
+      position: relative;
+      width: 100%;
+    }
+    #cameraPreview, #photoResult {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+    #photoCanvas {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -122,11 +135,11 @@
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div class="camera-placeholder">
-            <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+          <div class="camera-container">
+            <video id="cameraPreview" autoplay playsinline></video>
+            <img id="photoResult" style="display:none;" />
+            <canvas id="photoCanvas"></canvas>
           </div>
-          <video id="cameraPreview" autoplay playsinline style="display:none"></video>
-          <img id="photoPreview" style="display:none" />
         </div>
         <div class="camera-controls">
           <div class="input">
@@ -180,7 +193,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
