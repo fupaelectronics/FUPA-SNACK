@@ -1,23 +1,14 @@
-// Inisialisasi Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
-  authDomain: "fupa-snack.firebaseapp.com",
-  projectId: "fupa-snack",
-  storageBucket: "fupa-snack.firebasestorage.app",
-  messagingSenderId: "972524876738",
-  appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
-};
-
-// Inisialisasi Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-// Fungsi utilitas UI
+// Fungsi utilitas
 const $ = (sel) => document.querySelector(sel);
 const toast = (msg, type = 'info') => {
-  const t = $("#toast");
-  if (!t) return alert(msg);
+  // Buat elemen toast jika belum ada
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed; left:50%; bottom:18px; transform:translateX(-50%); color:#fff; padding:10px 14px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.15); z-index:10; display:none;';
+    document.body.appendChild(t);
+  }
   
   const colors = {
     success: '#2e7d32',
@@ -33,87 +24,90 @@ const toast = (msg, type = 'info') => {
 };
 
 // Fungsi untuk mendapatkan waktu server dari Firestore
-async function getServerTime() {
+const getServerTime = async () => {
   try {
-    const ref = db.collection('serverTime').doc('current');
-    const doc = await ref.get();
-    if (doc.exists) {
-      return doc.data().timestamp.toDate();
-    } else {
-      // Fallback ke waktu lokal jika tidak ada waktu server
-      return new Date();
-    }
+    const docRef = firebase.firestore().collection('serverTime').doc('current');
+    await docRef.set({ timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+    const doc = await docRef.get();
+    return doc.exists ? doc.data().timestamp.toDate() : new Date();
   } catch (error) {
-    console.error("Error getting server time:", error);
-    return new Date(); // Fallback ke waktu lokal
+    console.error('Error getting server time:', error);
+    return new Date();
   }
-}
+};
 
 // Fungsi untuk menentukan shift berdasarkan waktu
-function getShift(waktu) {
-  const hour = waktu.getHours();
+const getShift = (date) => {
+  const hour = date.getHours();
   if (hour >= 5 && hour < 12) return 'pagi';
   if (hour >= 12 && hour < 18) return 'sore';
-  return null;
-}
+  return 'malam'; // Di luar shift, tapi untuk presensi izin akan dihandle terpisah
+};
 
 // Fungsi untuk menentukan status presensi
-function getStatusPresensi(waktu, jenis, shift) {
-  const hari = waktu.getDay();
-  if (hari === 0) return "Libur"; // Minggu
-  
-  const jam = waktu.getHours();
-  const menit = waktu.getMinutes();
-  const totalMenit = jam * 60 + menit;
-  
-  // Aturan waktu default
-  if (jenis === 'izin') return "Izin";
-  
+const getStatusPresensi = (jenis, waktu, shift) => {
+  const now = waktu;
+  const day = now.getDay(); // 0 = Minggu, 1 = Senin, ... 6 = Sabtu
+
+  // Jika Minggu
+  if (day === 0) {
+    return 'Libur';
+  }
+
+  const jam = now.getHours();
+  const menit = now.getMinutes();
+
+  if (jenis === 'izin') {
+    return 'Izin';
+  }
+
   if (shift === 'pagi') {
     if (jenis === 'berangkat') {
-      if (totalMenit >= 330 && totalMenit <= 360) return "Tepat Waktu";
-      if (totalMenit > 360 && totalMenit <= 380) return "Terlambat";
+      // Tepat waktu: 05.30 - 06.00
+      if (jam === 5 && menit >= 30 || jam === 6 && menit <= 0) {
+        return 'Tepat Waktu';
+      } else if (jam === 6 && menit > 0 && menit <= 20) {
+        return 'Terlambat';
+      } else {
+        return 'Di luar sesi presensi';
+      }
     } else if (jenis === 'pulang') {
-      if (totalMenit >= 600 && totalMenit <= 660) return "Tepat Waktu";
-      if (totalMenit > 660 && totalMenit <= 680) return "Terlambat";
+      // Tepat waktu: 10.00 - 11.00
+      if (jam === 10 && menit >= 0 || jam === 11 && menit <= 0) {
+        return 'Tepat Waktu';
+      } else if (jam === 11 && menit > 0 && menit <= 20) {
+        return 'Terlambat';
+      } else {
+        return 'Di luar sesi presensi';
+      }
     }
   } else if (shift === 'sore') {
     if (jenis === 'berangkat') {
-      if (totalMenit >= 840 && totalMenit <= 870) return "Tepat Waktu";
-      if (totalMenit > 870 && totalMenit <= 890) return "Terlambat";
+      // Tepat waktu: 14.00 - 14.30
+      if (jam === 14 && menit >= 0 && menit <= 30) {
+        return 'Tepat Waktu';
+      } else if (jam === 14 && menit > 30 && menit <= 50) {
+        return 'Terlambat';
+      } else {
+        return 'Di luar sesi presensi';
+      }
     } else if (jenis === 'pulang') {
-      if (totalMenit >= 1050 && totalMenit <= 1110) return "Tepat Waktu";
-      if (totalMenit > 1110 && totalMenit <= 1130) return "Terlambat";
+      // Tepat waktu: 17.30 - 18.30
+      if (jam === 17 && menit >= 30 || jam === 18 && menit <= 30) {
+        return 'Tepat Waktu';
+      } else if (jam === 18 && menit > 30 && menit <= 50) {
+        return 'Terlambat';
+      } else {
+        return 'Di luar sesi presensi';
+      }
     }
   }
-  
-  return "Di luar sesi presensi";
-}
 
-// Fungsi untuk memeriksa apakah sudah melakukan presensi hari ini
-async function sudahPresensiHariIni(uid, jenis) {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    const querySnapshot = await db.collection('presensi')
-      .where('userId', '==', uid)
-      .where('waktu', '>=', today)
-      .where('waktu', '<', tomorrow)
-      .where('jenis', '==', jenis)
-      .get();
-    
-    return !querySnapshot.empty;
-  } catch (error) {
-    console.error("Error checking attendance:", error);
-    return false;
-  }
-}
+  return 'Di luar sesi presensi';
+};
 
-// Fungsi untuk kompres gambar
-async function compressImage(file) {
+// Fungsi untuk mengompres gambar
+const compressImage = (file, maxSizeKB = 10) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -123,266 +117,165 @@ async function compressImage(file) {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
-        // Set maximum dimensions
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
-        
-        // Calculate new dimensions
+        const maxDimension = 1024;
         if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
+          if (width > maxDimension) {
+            height *= maxDimension / width;
+            width = maxDimension;
           }
         } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
+          if (height > maxDimension) {
+            width *= maxDimension / height;
+            height = maxDimension;
           }
         }
-        
         canvas.width = width;
         canvas.height = height;
-        
-        // Draw and compress image
         ctx.drawImage(img, 0, 0, width, height);
-        
-        // Convert to blob with quality setting
-        canvas.toBlob(
-          (blob) => {
-            if (blob.size > 10000) { // 10KB
-              // If still too large, reduce quality further
-              canvas.toBlob(
-                (finalBlob) => resolve(finalBlob),
-                'image/jpeg',
-                0.5
-              );
-            } else {
-              resolve(blob);
-            }
-          },
-          'image/jpeg',
-          0.7
-        );
+        let quality = 0.9;
+        let compressedDataUrl;
+        do {
+          compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          quality -= 0.1;
+        } while (compressedDataUrl.length > maxSizeKB * 1024 && quality > 0.1);
+        resolve(compressedDataUrl);
       };
+      img.onerror = reject;
     };
-    reader.onerror = error => reject(error);
+    reader.onerror = reject;
   });
-}
+};
 
-// Fungsi untuk mengupload gambar ke Cloudinary
-async function uploadToCloudinary(blob) {
-  const formData = new FormData();
-  formData.append('file', blob);
-  formData.append('upload_preset', 'FupaSnack');
-  
-  try {
-    const response = await fetch('https://api.cloudinary.com/v1_1/da7idhh4f/image/upload', {
+// Fungsi untuk upload ke Cloudinary
+const uploadToCloudinary = (dataUrl) => {
+  return new Promise((resolve, reject) => {
+    const uploadPreset = 'FupaSnack';
+    const cloudName = 'da7idhh4f';
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/upload`;
+
+    const formData = new FormData();
+    formData.append('file', dataUrl);
+    formData.append('upload_preset', uploadPreset);
+
+    fetch(url, {
       method: 'POST',
       body: formData
-    });
-    
-    const data = await response.json();
-    return data.secure_url;
-  } catch (error) {
-    console.error('Error uploading image:', error);
-    throw error;
-  }
-}
-
-// Fungsi untuk mendapatkan lokasi pengguna
-function getCurrentLocation() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation tidak didukung'));
-      return;
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      },
-      (error) => {
-        reject(error);
-      },
-      { timeout: 10000 }
-    );
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.secure_url) {
+        resolve(data.secure_url);
+      } else {
+        reject(new Error('Upload failed'));
+      }
+    })
+    .catch(reject);
   });
-}
+};
 
-// Fungsi untuk memformat waktu
-function formatTime(date) {
-  return date.toLocaleTimeString('id-ID', {
+// Fungsi untuk memformat tanggal Indonesia
+const formatDate = (date) => {
+  const options = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
-  });
-}
+  };
+  return date.toLocaleDateString('id-ID', options);
+};
 
-// Fungsi untuk memformat tanggal
-function formatDate(date) {
-  return date.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-}
+// Fungsi untuk memformat tanggal menjadi YYYY-MM-DD
+const formatDateOnly = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-// Fungsi untuk mengecek dan mengupdate status login
-function checkAuth() {
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      window.location.href = 'index.html';
-      return;
+// Fungsi untuk memeriksa apakah sudah presensi hari ini untuk jenis tertentu
+const sudahPresensiHariIni = async (userId, jenis, tanggal) => {
+  const tanggalStr = formatDateOnly(tanggal);
+  const presensiRef = firebase.firestore().collection('presences');
+  const query = presensiRef.where('userId', '==', userId)
+                           .where('jenis', '==', jenis)
+                           .where('tanggal', '==', tanggalStr);
+  const snapshot = await query.get();
+  return !snapshot.empty;
+};
+
+// Fungsi untuk menambahkan data presensi
+const tambahPresensi = async (data) => {
+  const presensiRef = firebase.firestore().collection('presences');
+  return await presensiRef.add({
+    ...data,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+};
+
+// Fungsi untuk mendapatkan riwayat presensi per user (karyawan)
+const getRiwayatPresensi = async (userId, limit = 50) => {
+  const presensiRef = firebase.firestore().collection('presences');
+  let query = presensiRef.where('userId', '==', userId)
+                         .orderBy('createdAt', 'desc')
+                         .limit(limit);
+  const snapshot = await query.get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+// Fungsi untuk mendapatkan semua riwayat presensi (admin)
+const getAllRiwayatPresensi = async (limit = 50) => {
+  const presensiRef = firebase.firestore().collection('presences');
+  let query = presensiRef.orderBy('createdAt', 'desc').limit(limit);
+  const snapshot = await query.get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+// Fungsi untuk export CSV sesuai format STDR
+const exportToCSV = (data) => {
+  // Urutkan berdasarkan nama
+  data.sort((a, b) => a.nama.localeCompare(b.nama));
+
+  // Buat blok per karyawan
+  const grouped = {};
+  data.forEach(item => {
+    if (!grouped[item.nama]) {
+      grouped[item.nama] = [];
     }
-    
-    try {
-      // Cek role user
-      const userDoc = await db.collection('users').doc(user.uid).get();
-      
-      if (!userDoc.exists) {
-        // Jika data user tidak ada, arahkan ke index.html
-        await auth.signOut();
-        window.location.href = 'index.html';
-        return;
-      }
-      
-      const userData = userDoc.data();
-      
-      // Redirect berdasarkan role
-      const currentPage = window.location.pathname.split('/').pop();
-      if (userData.role === 'admin' && currentPage !== 'admin.html') {
-        window.location.href = 'admin.html';
-      } else if (userData.role === 'karyawan' && currentPage !== 'karyawan.html') {
-        window.location.href = 'karyawan.html';
-      }
-      
-      // Load data user
-      loadUserProfile(user.uid);
-      
-      // Jika data profil kosong, tampilkan popup
-      if (!userData.nama || !userData.alamat) {
-        $('#profileDlg').showModal();
-      }
-      
-    } catch (error) {
-      console.error('Error checking user role:', error);
-      toast('Terjadi kesalahan saat memeriksa hak akses', 'error');
-    }
+    grouped[item.nama].push(item);
   });
-}
 
-// Fungsi untuk memuat profil pengguna
-async function loadUserProfile(uid) {
-  try {
-    const userDoc = await db.collection('users').doc(uid).get();
-    
-    if (userDoc.exists) {
-      const userData = userDoc.data();
-      
-      // Isi data profil
-      if ($('#nama')) $('#nama').value = userData.nama || '';
-      if ($('#alamat')) $('#alamat').value = userData.alamat || '';
-      if ($('#pfp')) {
-        $('#pfp').src = userData.fotoProfil || 
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userData.nama || 'User')}&backgroundColor=ffb300,ffd54f&radius=20`;
-      }
-    }
-  } catch (error) {
-    console.error('Error loading user profile:', error);
+  // Urutkan setiap blok berdasarkan tanggal
+  for (let nama in grouped) {
+    grouped[nama].sort((a, b) => new Date(a.waktu) - new Date(b.waktu));
   }
-}
 
-// Fungsi untuk menyimpan profil pengguna
-async function saveUserProfile(uid, data) {
-  try {
-    await db.collection('users').doc(uid).update(data);
-    toast('Profil berhasil disimpan', 'success');
-    return true;
-  } catch (error) {
-    console.error('Error saving profile:', error);
-    toast('Gagal menyimpan profil', 'error');
-    return false;
-  }
-}
-
-// Fungsi untuk logout
-function logout() {
-  auth.signOut().then(() => {
-    window.location.href = 'index.html';
-  }).catch((error) => {
-    console.error('Error signing out:', error);
-    toast('Gagal keluar', 'error');
-  });
-}
-
-// Inisialisasi aplikasi
-function initApp() {
-  checkAuth();
-  
-  // Event listener untuk logout button
-  if ($('#logoutBtn')) {
-    $('#logoutBtn').addEventListener('click', logout);
-  }
-  
-  // Event listener untuk save profile button
-  if ($('#saveProfileBtn')) {
-    $('#saveProfileBtn').addEventListener('click', async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-      
-      const nama = $('#nama').value.trim();
-      const alamat = $('#alamat').value.trim();
-      
-      if (!nama || !alamat) {
-        toast('Nama dan alamat harus diisi', 'error');
-        return;
-      }
-      
-      // Handle upload foto profil jika ada
-      const pfpFile = $('#pfpFile').files[0];
-      let fotoProfilUrl = null;
-      
-      if (pfpFile) {
-        try {
-          const compressedImage = await compressImage(pfpFile);
-          fotoProfilUrl = await uploadToCloudinary(compressedImage);
-        } catch (error) {
-          console.error('Error uploading profile picture:', error);
-          toast('Gagal mengupload foto profil', 'error');
-          return;
-        }
-      }
-      
-      const updateData = { nama, alamat };
-      if (fotoProfilUrl) updateData.fotoProfil = fotoProfilUrl;
-      
-      const success = await saveUserProfile(user.uid, updateData);
-      if (success) {
-        $('#profileDlg').close();
-      }
+  // Buat CSV
+  let csv = 'Nama,Tanggal,Shift,Jenis,Status,Koordinat\n';
+  for (let nama in grouped) {
+    grouped[nama].forEach(item => {
+      const tanggal = item.tanggal || formatDateOnly(item.waktu.toDate());
+      csv += `"${nama}",${tanggal},${item.shift},${item.jenis},${item.status},${item.koordinat}\n`;
     });
+    csv += '\n'; // Baris kosong antar blok
   }
-  
-  // Event listener untuk file input change
-  if ($('#pfpFile')) {
-    $('#pfpFile').addEventListener('change', (e) => {
-      if (e.target.files && e.target.files[0]) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          $('#pfp').src = event.target.result;
-        };
-        reader.readAsDataURL(e.target.files[0]);
-      }
-    });
-  }
-}
 
-// Panggil inisialisasi aplikasi saat DOM siap
-document.addEventListener('DOMContentLoaded', initApp);
+  return csv;
+};
+
+// Fungsi untuk mendownload CSV
+const downloadCSV = (csv, filename) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
