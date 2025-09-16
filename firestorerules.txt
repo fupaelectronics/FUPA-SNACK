@@ -1,20 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Collection users: setiap user hanya dapat membaca dan menulis dokumen mereka sendiri
+    // Collection users: hanya user yang terautentikasi yang bisa membaca/menulis data mereka sendiri
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Collection presensi: admin dapat membaca semua, karyawan hanya dapat membaca dan menulis miliknya
-    match /presensi/{presensiId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin(request.auth.uid));
-      allow write: if request.auth != null && request.auth.uid == resource.data.uid;
+    
+    // Collection presences: admin bisa baca semua, user hanya bisa baca/menulis data mereka sendiri
+    match /presences/{presenceId} {
+      allow read: if request.auth != null && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' 
+        || resource.data.userId == request.auth.uid);
+      allow write: if request.auth != null && resource.data.userId == request.auth.uid;
     }
-
-    // Function untuk mengecek apakah user adalah admin
-    function isAdmin(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin';
+    
+    // Collection shifts: bisa dibaca oleh semua user yang terautentikasi
+    match /shifts/{shiftId} {
+      allow read: if request.auth != null;
     }
   }
 }
