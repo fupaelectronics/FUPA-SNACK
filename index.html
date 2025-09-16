@@ -156,14 +156,15 @@
     // Inisialisasi Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    const db = firebase.firestore();
 
-    // UID roles
-    const ADMIN_UIDS = new Set([
+    // Daftar UID admin dan karyawan
+    const ADMIN_UIDS = [
       "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
       "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
-    ]);
+    ];
 
-    const KARYAWAN_UIDS = new Set([
+    const KARYAWAN_UIDS = [
       "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
       "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
       "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
@@ -175,11 +176,11 @@
       "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
       "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
       "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
-    ]);
+    ];
 
-    // Util UI
+    // Fungsi utilitas UI
     const $ = (sel) => document.querySelector(sel);
-    const toast = (msg) => {
+    const showToast = (msg) => {
       const t = $("#toast");
       if (!t) return alert(msg);
       t.textContent = msg;
@@ -187,15 +188,43 @@
       setTimeout(() => { t.style.display = "none"; }, 2200);
     };
 
+    // Fungsi untuk mendapatkan role berdasarkan UID
+    function getRoleByUid(uid) {
+      if (ADMIN_UIDS.includes(uid)) {
+        return 'admin';
+      } else if (KARYAWAN_UIDS.includes(uid)) {
+        return 'karyawan';
+      } else {
+        return null;
+      }
+    }
+
     // Redirect berdasarkan role
-    function redirectByRole(uid) {
-      if (ADMIN_UIDS.has(uid)) {
+    async function redirectByRole(uid) {
+      const role = getRoleByUid(uid);
+      
+      if (role === 'admin') {
         return "admin.html";
-      } else if (KARYAWAN_UIDS.has(uid)) {
+      } else if (role === 'karyawan') {
         return "karyawan.html";
       } else {
-        auth.signOut();
-        return null;
+        // Jika UID tidak dikenal, cek di Firestore
+        try {
+          const userDoc = await db.collection('users').doc(uid).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            if (userData.role === 'admin') {
+              return "admin.html";
+            } else if (userData.role === 'karyawan') {
+              return "karyawan.html";
+            }
+          }
+        } catch (error) {
+          console.error("Error checking user role:", error);
+        }
+        
+        // Default to karyawan if role not found
+        return "karyawan.html";
       }
     }
 
@@ -218,7 +247,7 @@
       const successMessage = $("#successMessage");
       
       if (!email || !pass) { 
-        toast("Isi email dan kata sandi."); 
+        showToast("Isi email dan kata sandi."); 
         return; 
       }
       
@@ -233,19 +262,32 @@
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
         const user = userCredential.user;
         
+        // Simpan role ke Firestore jika belum ada
+        const userRef = db.collection('users').doc(user.uid);
+        const userDoc = await userRef.get();
+        
+        if (!userDoc.exists) {
+          const role = getRoleByUid(user.uid) || 'karyawan';
+          await userRef.set({
+            email: user.email,
+            role: role,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+        
         // Tampilkan pesan sukses
         loginText.textContent = "Berhasil!";
         successMessage.textContent = "Password benar, mengarahkan ke halaman yang sesuai...";
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        const redirectPage = redirectByRole(user.uid);
+        const redirectPage = await redirectByRole(user.uid);
         if (redirectPage) {
           setTimeout(() => {
             window.location.href = redirectPage;
           }, 1500);
         } else {
-          toast("Akses ditolak: akun belum diberi peran yang benar.");
+          showToast("Akses ditolak: akun belum diberi peran yang benar.");
           await auth.signOut();
           loginBtn.disabled = false;
           loginText.textContent = "Masuk";
@@ -260,9 +302,9 @@
         successMessage.style.display = "none";
         
         if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-          toast("Email atau kata sandi salah.");
+          showToast("Email atau kata sandi salah.");
         } else {
-          toast("Gagal masuk. Periksa koneksi internet Anda.");
+          showToast("Gagal masuk. Periksa koneksi internet Anda.");
         }
       }
     };
@@ -273,6 +315,19 @@
         document.getElementById('loginBtn').click();
       }
     });
+
+    // Daftarkan Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then((registration) => {
+            console.log('ServiceWorker registered with scope:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('ServiceWorker registration failed:', error);
+          });
+      });
+    }
   </script>
 </body>
 </html>
