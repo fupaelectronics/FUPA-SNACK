@@ -1,22 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Collection users: hanya user yang terautentikasi yang bisa membaca/menulis data mereka sendiri
+    // Users collection: users can read their own data, admins can read all
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
     
-    // Collection presences: admin bisa baca semua, user hanya bisa baca/menulis data mereka sendiri
-    match /presences/{presenceId} {
-      allow read: if request.auth != null && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' 
-        || resource.data.userId == request.auth.uid);
-      allow write: if request.auth != null && resource.data.userId == request.auth.uid;
+    // Presensi collection: users can write their own, admins can read all
+    match /presensi/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if false;
     }
     
-    // Collection shifts: bisa dibaca oleh semua user yang terautentikasi
-    match /shifts/{shiftId} {
-      allow read: if request.auth != null;
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
 }
