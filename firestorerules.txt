@@ -1,21 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection: user dapat membaca dan menulis data mereka sendiri
+    // Collection users: hanya user yang terautentikasi yang bisa membaca/mengupdate datanya sendiri
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Presences collection: user dapat menambah data presensi mereka sendiri, admin dapat membaca semua
-    match /presences/{presenceId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || exists(/databases/$(database)/documents/users/$(request.auth.uid)));
-    }
-
-    // Server time collection: hanya untuk membaca waktu server
-    match /serverTime/{document} {
-      allow read: if true;
-      allow write: if false;
+    
+    // Collection presensi: admin bisa baca semua, user hanya bisa baca/menambah data miliknya
+    match /presensi/{document} {
+      allow read: if request.auth != null && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' 
+        || resource.data.userId == request.auth.uid);
+      allow create: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid;
     }
   }
 }
