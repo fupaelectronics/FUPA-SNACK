@@ -1,22 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection: users can read their own data, admins can read all
+    // Users collection: user dapat membaca dan menulis data mereka sendiri
     match /users/{userId} {
-      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
-    // Presensi collection: users can write their own, admins can read all
-    match /presensi/{document} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
-      allow update, delete: if false;
+
+    // Presences collection: user dapat menambah data presensi mereka sendiri, admin dapat membaca semua
+    match /presences/{presenceId} {
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || exists(/databases/$(database)/documents/users/$(request.auth.uid)));
     }
-    
-    // Helper function to check if user is admin
-    function isAdmin() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+    // Server time collection: hanya untuk membaca waktu server
+    match /serverTime/{document} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
