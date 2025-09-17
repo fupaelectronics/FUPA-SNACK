@@ -86,6 +86,24 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      margin-top: 16px;
+      gap: 8px;
+    }
+    .pagination button {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .pagination button.active {
+      background: #FFD54F;
+      color: white;
+      border-color: #FFD54F;
+    }
   </style>
 </head>
 <body>
@@ -94,7 +112,7 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Panel Admin</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 10:45:32</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu server...</div>
       </div>
     </div>
     <div class="icons">
@@ -136,7 +154,8 @@
           </div>
           <div class="filter-item">
             <select id="fShow" class="filter-select">
-              <option value="50">Tampilkan 50</option>
+              <option value="10">Tampilkan 10</option>
+              <option value="50" selected>Tampilkan 50</option>
               <option value="100">Tampilkan 100</option>
               <option value="200">Tampilkan 200</option>
               <option value="all">Tampilkan Semua</option>
@@ -151,6 +170,7 @@
               <tr>
                 <th>Waktu</th>
                 <th>Nama</th>
+                <th>Shift</th>
                 <th>Jenis</th>
                 <th>Status</th>
                 <th>Koordinat</th>
@@ -158,9 +178,17 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <!-- Data will be populated here -->
+              <tr>
+                <td colspan="7" style="text-align:center;padding:20px">Memuat data presensi...</td>
+              </tr>
             </tbody>
           </table>
+        </div>
+
+        <div id="pagination" class="pagination" style="display:none">
+          <button id="prevPage">Sebelumnya</button>
+          <span id="pageInfo">Halaman 1 dari 1</span>
+          <button id="nextPage">Selanjutnya</button>
         </div>
       </section>
     </div>
@@ -178,8 +206,8 @@
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" value="Admin FUPA" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="Jakarta Pusat" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
         <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
@@ -195,239 +223,322 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
   <script>
+    // Variabel global
     let currentUser = null;
-    let currentUserProfile = null;
-    let serverTime = null;
-    let allPresences = [];
+    let presenceData = [];
+    let filteredData = [];
+    let currentPage = 1;
+    let itemsPerPage = 50;
+    let totalPages = 1;
 
-    document.addEventListener('DOMContentLoaded', function() {
-      initAuth(async (user, userProfile) => {
-        currentUser = user;
-        currentUserProfile = userProfile;
-
-        // Update profile dialog
-        $('#nama').value = userProfile.nama || '';
-        $('#alamat').value = userProfile.alamat || '';
-        if (userProfile.foto) {
-          $('#pfp').src = userProfile.foto;
+    // Fungsi untuk memuat data profil
+    window.loadProfileData = async function(uid) {
+      try {
+        const userDoc = await firebase.firestore().collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          $('#nama').value = userData.nama || '';
+          $('#alamat').value = userData.alamat || '';
+          if (userData.photoURL) {
+            $('#pfp').src = userData.photoURL;
+          }
         }
+      } catch (error) {
+        console.error('Error loading profile data:', error);
+      }
+    };
 
-        // If profile is incomplete, show dialog
-        if (!userProfile.nama || !userProfile.alamat) {
-          $('#profileDlg').showModal();
-        }
-
-        // Start updating server time
-        updateServerTime();
-
-        // Load presences
-        loadPresences();
-
-        // Event listeners
-        $('#profileBtn').addEventListener('click', () => {
-          $('#profileDlg').showModal();
+    // Fungsi untuk memuat data presensi
+    window.loadPresenceData = async function() {
+      try {
+        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px">Memuat data presensi...</td></tr>';
+        
+        const snapshot = await firebase.firestore()
+          .collection('presensi')
+          .orderBy('waktu', 'desc')
+          .get();
+        
+        presenceData = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          presenceData.push({
+            id: doc.id,
+            ...data,
+            waktu: data.waktu ? data.waktu.toDate() : new Date()
+          });
         });
-
-        $('#saveProfileBtn').addEventListener('click', saveProfile);
-        $('#logoutBtn').addEventListener('click', logout);
-        $('#exportCsv').addEventListener('click', exportCSV);
-        $('#applyFilter').addEventListener('click', applyFilters);
-        $('#fPeriode').addEventListener('change', toggleCustomDateRange);
-        $('#pfpFile').addEventListener('change', updateProfilePicture);
-      });
-    });
-
-    async function updateServerTime() {
-      // Get server time from Firestore
-      const timeRef = db.collection('serverTime').doc('current');
-      try {
-        const doc = await timeRef.get();
-        if (doc.exists) {
-          serverTime = doc.data().timestamp.toDate();
-        } else {
-          serverTime = new Date(); // Fallback to client time
-        }
+        
+        applyFilters();
+        
       } catch (error) {
-        console.error('Error getting server time:', error);
-        serverTime = new Date();
+        console.error('Error loading presence data:', error);
+        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--bad)">Gagal memuat data presensi</td></tr>';
+        toast('Gagal memuat data presensi: ' + error.message, 'error');
       }
+    };
 
-      // Update UI
-      $('#serverTime').textContent = formatDate(serverTime);
-
-      // Update every second
-      setTimeout(updateServerTime, 1000);
-    }
-
-    async function loadPresences(filter = {}) {
-      try {
-        allPresences = await getPresences(filter);
-        renderPresences(allPresences);
-      } catch (error) {
-        console.error('Error loading presences:', error);
-        toast('Gagal memuat riwayat presensi', 'error');
-      }
-    }
-
-    function renderPresences(presences) {
-      const tableBody = $('#tableBody');
-      tableBody.innerHTML = '';
-
-      if (presences.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
-        return;
-      }
-
-      // Apply show filter
-      const showValue = $('#fShow').value;
-      let displayPresences = presences;
-      if (showValue !== 'all') {
-        displayPresences = presences.slice(0, parseInt(showValue));
-      }
-
-      displayPresences.forEach(presence => {
-        const row = document.createElement('tr');
-        const waktu = presence.waktu.toDate();
-        const waktuStr = formatDate(waktu);
-
-        let statusClass = 's-good';
-        if (presence.status === 'Terlambat') {
-          statusClass = 's-warn';
-        } else if (presence.status === 'Di luar sesi presensi' || presence.status === 'Tidak Valid') {
-          statusClass = 's-bad';
-        }
-
-        row.innerHTML = `
-          <td>${waktuStr}</td>
-          <td>${presence.nama}</td>
-          <td>${presence.jenis}</td>
-          <td><span class="status ${statusClass}">${presence.status}</span></td>
-          <td>${presence.koordinat}</td>
-          <td><a href="${presence.selfie}" target="_blank">Lihat Foto</a></td>
-        `;
-        tableBody.appendChild(row);
-      });
-    }
-
+    // Fungsi untuk menerapkan filter
     function applyFilters() {
-      const nama = $('#fNama').value.trim();
+      const namaFilter = $('#fNama').value.toLowerCase();
       const periode = $('#fPeriode').value;
-      let dari = null;
-      let sampai = null;
-
-      if (periode === 'custom') {
-        dari = $('#fDari').value;
-        sampai = $('#fSampai').value;
-        if (!dari || !sampai) {
-          toast('Harap isi tanggal untuk periode kustom', 'error');
-          return;
-        }
-      } else {
-        // Set date range based on periode
-        const now = serverTime || new Date();
-        switch (periode) {
-          case 'harian':
-            dari = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            sampai = new Date(dari);
-            sampai.setDate(sampai.getDate() + 1);
-            break;
-          case 'mingguan':
-            const day = now.getDay();
-            dari = new Date(now);
-            dari.setDate(now.getDate() - day);
-            sampai = new Date(dari);
-            sampai.setDate(sampai.getDate() + 7);
-            break;
-          case 'bulanan':
-            dari = new Date(now.getFullYear(), now.getMonth(), 1);
-            sampai = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-            break;
-          case 'tahunan':
-            dari = new Date(now.getFullYear(), 0, 1);
-            sampai = new Date(now.getFullYear() + 1, 0, 1);
-            break;
-        }
-        // Format to YYYY-MM-DD for input fields
-        if (dari && sampai) {
-          $('#fDari').value = formatDateForCSV(dari);
-          $('#fSampai').value = formatDateForCSV(new Date(sampai.getTime() - 1)); // Subtract one day to show inclusive
-        }
-      }
-
-      loadPresences({
-        nama: nama || null,
-        dari: dari,
-        sampai: sampai
+      const showValue = $('#fShow').value;
+      
+      itemsPerPage = showValue === 'all' ? presenceData.length : parseInt(showValue);
+      
+      // Filter berdasarkan nama
+      filteredData = presenceData.filter(item => {
+        return item.nama.toLowerCase().includes(namaFilter);
       });
+      
+      // Filter berdasarkan periode
+      const now = new Date();
+      if (periode !== 'all') {
+        filteredData = filteredData.filter(item => {
+          const itemDate = item.waktu;
+          
+          switch (periode) {
+            case 'harian':
+              return itemDate.toDateString() === now.toDateString();
+            case 'mingguan':
+              const weekStart = new Date(now);
+              weekStart.setDate(now.getDate() - now.getDay());
+              weekStart.setHours(0, 0, 0, 0);
+              
+              const weekEnd = new Date(weekStart);
+              weekEnd.setDate(weekStart.getDate() + 6);
+              weekEnd.setHours(23, 59, 59, 999);
+              
+              return itemDate >= weekStart && itemDate <= weekEnd;
+            case 'bulanan':
+              return itemDate.getMonth() === now.getMonth() && 
+                     itemDate.getFullYear() === now.getFullYear();
+            case 'tahunan':
+              return itemDate.getFullYear() === now.getFullYear();
+            case 'custom':
+              const dari = new Date($('#fDari').value);
+              const sampai = new Date($('#fSampai').value);
+              sampai.setHours(23, 59, 59, 999);
+              
+              return itemDate >= dari && itemDate <= sampai;
+            default:
+              return true;
+          }
+        });
+      }
+      
+      // Urutkan berdasarkan nama kemudian waktu
+      filteredData.sort((a, b) => {
+        if (a.nama < b.nama) return -1;
+        if (a.nama > b.nama) return 1;
+        return b.waktu - a.waktu;
+      });
+      
+      totalPages = Math.ceil(filteredData.length / itemsPerPage);
+      currentPage = 1;
+      
+      renderTable();
+      updatePagination();
     }
 
-    function toggleCustomDateRange() {
-      const period = $('#fPeriode').value;
-      $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
-    }
-
-    function exportCSV() {
-      if (allPresences.length === 0) {
-        toast('Tidak ada data untuk diekspor', 'error');
+    // Fungsi untuk merender tabel
+    function renderTable() {
+      if (filteredData.length === 0) {
+        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px">Tidak ada data presensi</td></tr>';
+        $('#pagination').style.display = 'none';
         return;
       }
+      
+      const start = (currentPage - 1) * itemsPerPage;
+      const end = start + itemsPerPage;
+      const pageData = filteredData.slice(start, end);
+      
+      let tableHTML = '';
+      
+      pageData.forEach(item => {
+        const waktu = item.waktu.toLocaleString('id-ID', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        let statusClass = 's-good';
+        if (item.status === 'Terlambat') statusClass = 's-warn';
+        if (item.status === 'Di luar sesi presensi' || item.status === 'Libur') statusClass = 's-bad';
+        
+        tableHTML += `
+          <tr>
+            <td>${waktu}</td>
+            <td>${item.nama}</td>
+            <td>${item.shift || '-'}</td>
+            <td>${item.jenis}</td>
+            <td><span class="status ${statusClass}">${item.status}</span></td>
+            <td>${item.koordinat ? `${item.koordinat.latitude.toFixed(6)}, ${item.koordinat.longitude.toFixed(6)}` : '-'}</td>
+            <td><a href="${item.foto}" target="_blank">Lihat Foto</a></td>
+          </tr>
+        `;
+      });
+      
+      $('#tableBody').innerHTML = tableHTML;
+      $('#pagination').style.display = totalPages > 1 ? 'flex' : 'none';
+    }
 
-      const now = serverTime || new Date();
-      const filename = `presensi_${formatDateForCSV(now)}.csv`;
-      exportToCSV(allPresences, filename);
+    // Fungsi untuk update pagination
+    function updatePagination() {
+      $('#pageInfo').textContent = `Halaman ${currentPage} dari ${totalPages}`;
+      $('#prevPage').disabled = currentPage === 1;
+      $('#nextPage').disabled = currentPage === totalPages;
+    }
+
+    // Fungsi untuk export CSV
+    function exportToCSV() {
+      if (filteredData.length === 0) {
+        toast('Tidak ada data untuk diekspor', 'warning');
+        return;
+      }
+      
+      // Format data sesuai STDR
+      const csvData = [];
+      const headers = ['Nama', 'Tanggal', 'Shift', 'Jenis', 'Status', 'Koordinat'];
+      csvData.push(headers);
+      
+      // Kelompokkan data berdasarkan nama
+      const groupedData = {};
+      filteredData.forEach(item => {
+        if (!groupedData[item.nama]) {
+          groupedData[item.nama] = [];
+        }
+        
+        const dateStr = item.waktu.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+        
+        groupedData[item.nama].push({
+          tanggal: dateStr,
+          shift: item.shift || '-',
+          jenis: item.jenis,
+          status: item.status,
+          koordinat: item.koordinat ? `${item.koordinat.latitude.toFixed(6)}, ${item.koordinat.longitude.toFixed(6)}` : '-'
+        });
+      });
+      
+      // Urutkan nama alfabetis
+      const sortedNames = Object.keys(groupedData).sort();
+      
+      // Format data untuk CSV
+      sortedNames.forEach(nama => {
+        // Urutkan data per karyawan berdasarkan tanggal
+        groupedData[nama].sort((a, b) => {
+          const dateA = new Date(a.tanggal.split('/').reverse().join('-'));
+          const dateB = new Date(b.tanggal.split('/').reverse().join('-'));
+          return dateA - dateB;
+        });
+        
+        // Tambahkan data ke CSV
+        groupedData[nama].forEach(item => {
+          csvData.push([
+            nama,
+            item.tanggal,
+            item.shift,
+            item.jenis,
+            item.status,
+            item.koordinat
+          ]);
+        });
+        
+        // Tambahkan baris kosong antar karyawan
+        csvData.push([]);
+      });
+      
+      // Buat file CSV
+      const csvContent = csvData.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
       toast('CSV berhasil diekspor', 'success');
     }
 
-    async function saveProfile() {
-      const nama = $('#nama').value.trim();
-      const alamat = $('#alamat').value.trim();
-
-      if (!nama || !alamat) {
-        toast('Nama dan alamat harus diisi', 'error');
-        return;
-      }
-
-      const updated = await updateUserProfile(currentUser.uid, {
-        nama: nama,
-        alamat: alamat
+    // Setup halaman admin
+    document.addEventListener('DOMContentLoaded', function() {
+      // Update waktu server
+      updateServerTime();
+      setInterval(updateServerTime, 1000);
+      
+      // Setup event listeners
+      $('#applyFilter').addEventListener('click', applyFilters);
+      
+      $('#fPeriode').addEventListener('change', function() {
+        $('#customDateRange').style.display = this.value === 'custom' ? 'flex' : 'none';
       });
-
-      if (updated) {
-        toast('Profil berhasil disimpan', 'success');
-        currentUserProfile.nama = nama;
-        currentUserProfile.alamat = alamat;
-        $('#profileDlg').close();
-      } else {
-        toast('Gagal menyimpan profil', 'error');
-      }
-    }
-
-    async function updateProfilePicture(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      try {
-        const compressedBlob = await compressImage(file);
-        const imageUrl = await uploadToCloudinary(compressedBlob);
-
-        const updated = await updateUserProfile(currentUser.uid, {
-          foto: imageUrl
-        });
-
-        if (updated) {
-          $('#pfp').src = imageUrl;
-          toast('Foto profil berhasil diubah', 'success');
-        } else {
-          toast('Gagal mengubah foto profil', 'error');
+      
+      $('#exportCsv').addEventListener('click', exportToCSV);
+      
+      $('#prevPage').addEventListener('click', function() {
+        if (currentPage > 1) {
+          currentPage--;
+          renderTable();
+          updatePagination();
         }
-      } catch (error) {
-        console.error('Error updating profile picture:', error);
-        toast('Gagal mengubah foto profil', 'error');
-      }
+      });
+      
+      $('#nextPage').addEventListener('click', function() {
+        if (currentPage < totalPages) {
+          currentPage++;
+          renderTable();
+          updatePagination();
+        }
+      });
+      
+      $('#profileBtn').addEventListener('click', function() {
+        $('#profileDlg').showModal();
+      });
+      
+      // Set tanggal default untuk filter custom
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      $('#fDari').value = firstDay.toISOString().split('T')[0];
+      $('#fSampai').value = today.toISOString().split('T')[0];
+    });
+
+    // Update waktu server
+    function updateServerTime() {
+      const now = new Date();
+      const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'Asia/Jakarta'
+      };
+      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
     }
 
-    function logout() {
-      auth.signOut();
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          })
+          .catch(function(error) {
+            console.log('ServiceWorker registration failed: ', error);
+          });
+      });
     }
   </script>
 </body>
