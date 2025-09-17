@@ -158,7 +158,7 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Fungsi utilitas
+    // Util UI
     const $ = (sel) => document.querySelector(sel);
     const toast = (msg) => {
       const t = $("#toast");
@@ -168,36 +168,27 @@
       setTimeout(() => { t.style.display = "none"; }, 2200);
     };
 
-    // Fungsi untuk mendapatkan role dari Firestore
-    async function getUserRole(uid) {
+    // Redirect berdasarkan role dari Firestore
+    async function redirectByRole(uid) {
       try {
-        const doc = await db.collection("users").doc(uid).get();
-        if (doc.exists) {
-          return doc.data().role || "karyawan";
-        } else {
-          // Buat dokumen user baru jika tidak ada
-          await db.collection("users").doc(uid).set({
-            role: "karyawan",
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          return "karyawan";
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          const role = userData.role;
+          if (role === 'admin') {
+            return "admin.html";
+          } else if (role === 'karyawan') {
+            return "karyawan.html";
+          }
         }
+        // Jika tidak ada role, maka logout dan tampilkan pesan
+        auth.signOut();
+        toast("Akses ditolak: akun belum diberi peran yang benar.");
+        return null;
       } catch (error) {
         console.error("Error getting user role:", error);
-        return "karyawan";
-      }
-    }
-
-    // Redirect berdasarkan role
-    async function redirectByRole(uid) {
-      const role = await getUserRole(uid);
-      
-      if (role === "admin") {
-        return "admin.html";
-      } else if (role === "karyawan") {
-        return "karyawan.html";
-      } else {
         auth.signOut();
+        toast("Terjadi kesalahan saat memeriksa peran.");
         return null;
       }
     }
@@ -248,8 +239,6 @@
             window.location.href = redirectPage;
           }, 1500);
         } else {
-          toast("Akses ditolak: akun belum diberi peran yang benar.");
-          await auth.signOut();
           loginBtn.disabled = false;
           loginText.textContent = "Masuk";
           loginSpinner.style.display = "none";
