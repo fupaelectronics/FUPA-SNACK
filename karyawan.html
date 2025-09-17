@@ -83,18 +83,6 @@
       color: white;
       font-size: 16px;
     }
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
   </style>
 </head>
 <body>
@@ -107,7 +95,7 @@
       </div>
     </div>
     <div class="icons">
-      <button id="profileBtn" class="icon-btn" title="Profil" onclick="showProfileModal()">
+      <button id="profileBtn" class="icon-btn" title="Profil">
         <span class="material-symbols-rounded">account_circle</span>
       </button>
     </div>
@@ -125,9 +113,9 @@
           <div id="cameraPlaceholder" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
-          <video id="cameraVideo" autoplay playsinline style="display:none"></video>
-          <canvas id="photoCanvas" style="display:none"></canvas>
-          <img id="photoPreview" style="display:none" />
+          <video id="video" autoplay playsinline style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></video>
+          <canvas id="canvas" style="display:none;"></canvas>
+          <img id="photo" style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover" />
         </div>
         <div class="camera-controls">
           <div class="input">
@@ -170,8 +158,8 @@
         <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="Jakarta Selatan" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
-        <button id="saveProfileBtn" class="btn" onclick="saveProfile()"><span class="material-symbols-rounded">save</span> Simpan</button>
-        <button id="logoutBtn" class="btn" style="background:#222" onclick="doLogout()"><span class="material-symbols-rounded">logout</span> Keluar</button>
+        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
       </div>
     </div>
   </dialog>
@@ -182,5 +170,260 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    let currentUserProfile = null;
+    let stream = null;
+    let photoData = null;
+    let serverTime = null;
+
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', function() {
+      initAuth(async (user, userProfile) => {
+        currentUser = user;
+        currentUserProfile = userProfile;
+
+        // Update profile dialog
+        $('#nama').value = userProfile.nama || '';
+        $('#alamat').value = userProfile.alamat || '';
+        if (userProfile.foto) {
+          $('#pfp').src = userProfile.foto;
+        }
+
+        // If profile is incomplete, show dialog
+        if (!userProfile.nama || !userProfile.alamat) {
+          $('#profileDlg').showModal();
+        }
+
+        // Start updating server time
+        updateServerTime();
+
+        // Get location
+        getLocation();
+
+        // Start camera
+        startCamera();
+
+        // Event listeners
+        $('#profileBtn').addEventListener('click', () => {
+          $('#profileDlg').showModal();
+        });
+
+        $('#saveProfileBtn').addEventListener('click', saveProfile);
+        $('#logoutBtn').addEventListener('click', logout);
+        $('#snapBtn').addEventListener('click', takePicture);
+        $('#uploadBtn').addEventListener('click', uploadPresence);
+        $('#pfpFile').addEventListener('change', updateProfilePicture);
+      });
+    });
+
+    async function updateServerTime() {
+      // Get server time from Firestore
+      const timeRef = db.collection('serverTime').doc('current');
+      try {
+        const doc = await timeRef.get();
+        if (doc.exists) {
+          serverTime = doc.data().timestamp.toDate();
+        } else {
+          serverTime = new Date(); // Fallback to client time
+        }
+      } catch (error) {
+        console.error('Error getting server time:', error);
+        serverTime = new Date();
+      }
+
+      // Update UI
+      $('#serverTime').textContent = formatDate(serverTime);
+
+      // Update presence status
+      updatePresenceStatus();
+
+      // Update every second
+      setTimeout(updateServerTime, 1000);
+    }
+
+    function updatePresenceStatus() {
+      const shift = getCurrentShift(serverTime);
+      const status = getPresenceStatus(serverTime, $('#jenis').value, shift);
+      $('#statusText').textContent = status;
+
+      // Update status chip color
+      const statusChip = $('#statusChip');
+      statusChip.className = 'status ';
+      if (status === 'Tepat Waktu') {
+        statusChip.classList.add('s-good');
+      } else if (status === 'Terlambat') {
+        statusChip.classList.add('s-warn');
+      } else if (status === 'Libur' || status === 'Di luar sesi presensi') {
+        statusChip.classList.add('s-bad');
+      } else {
+        statusChip.classList.add('s-good'); // Izin is good
+      }
+    }
+
+    function getLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            $('#locText').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            $('#locText').textContent = 'Tidak dapat mengakses lokasi';
+          }
+        );
+      } else {
+        $('#locText').textContent = 'Geolocation tidak didukung';
+      }
+    }
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const video = $('#video');
+        video.srcObject = stream;
+        video.style.display = 'block';
+        $('#cameraPlaceholder').style.display = 'none';
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        toast('Tidak dapat mengakses kamera', 'error');
+      }
+    }
+
+    function takePicture() {
+      const video = $('#video');
+      const canvas = $('#canvas');
+      const photo = $('#photo');
+      const context = canvas.getContext('2d');
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      photo.src = dataUrl;
+      photo.style.display = 'block';
+      video.style.display = 'none';
+
+      // Convert to blob for upload
+      fetch(dataUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          photoData = blob;
+        });
+
+      $('#uploadBtn').disabled = false;
+    }
+
+    async function uploadPresence() {
+      const jenis = $('#jenis').value;
+      const shift = getCurrentShift(serverTime);
+      const status = getPresenceStatus(serverTime, jenis, shift);
+      const locText = $('#locText').textContent;
+
+      // Check if already presence for today
+      const hasExisting = await checkExistingPresence(currentUser.uid, jenis, serverTime);
+      if (hasExisting) {
+        toast('Anda sudah melakukan presensi ' + jenis + ' hari ini.', 'error');
+        return;
+      }
+
+      // Check if outside session and not izin
+      if (status === 'Di luar sesi presensi' && jenis !== 'izin') {
+        toast('Anda berada di luar sesi presensi untuk ' + jenis, 'error');
+        return;
+      }
+
+      // Compress and upload image
+      $('#uploadBtn').disabled = true;
+      $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+
+      try {
+        const compressedBlob = await compressImage(photoData);
+        const imageUrl = await uploadToCloudinary(compressedBlob);
+
+        // Save presence to Firestore
+        await db.collection('presences').add({
+          uid: currentUser.uid,
+          nama: currentUserProfile.nama,
+          waktu: getServerTimestamp(),
+          shift: shift,
+          jenis: jenis,
+          status: status,
+          koordinat: locText,
+          selfie: imageUrl
+        });
+
+        toast('Presensi berhasil dicatat', 'success');
+        $('#uploadBtn').disabled = true;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+
+        // Reset camera
+        photoData = null;
+        $('#photo').style.display = 'none';
+        $('#video').style.display = 'block';
+        startCamera();
+      } catch (error) {
+        console.error('Error uploading presence:', error);
+        toast('Gagal mengupload presensi', 'error');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+      }
+    }
+
+    async function saveProfile() {
+      const nama = $('#nama').value.trim();
+      const alamat = $('#alamat').value.trim();
+
+      if (!nama || !alamat) {
+        toast('Nama dan alamat harus diisi', 'error');
+        return;
+      }
+
+      const updated = await updateUserProfile(currentUser.uid, {
+        nama: nama,
+        alamat: alamat
+      });
+
+      if (updated) {
+        toast('Profil berhasil disimpan', 'success');
+        currentUserProfile.nama = nama;
+        currentUserProfile.alamat = alamat;
+        $('#profileDlg').close();
+      } else {
+        toast('Gagal menyimpan profil', 'error');
+      }
+    }
+
+    async function updateProfilePicture(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      try {
+        const compressedBlob = await compressImage(file);
+        const imageUrl = await uploadToCloudinary(compressedBlob);
+
+        const updated = await updateUserProfile(currentUser.uid, {
+          foto: imageUrl
+        });
+
+        if (updated) {
+          $('#pfp').src = imageUrl;
+          toast('Foto profil berhasil diubah', 'success');
+        } else {
+          toast('Gagal mengubah foto profil', 'error');
+        }
+      } catch (error) {
+        console.error('Error updating profile picture:', error);
+        toast('Gagal mengubah foto profil', 'error');
+      }
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+  </script>
 </body>
 </html>
