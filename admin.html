@@ -86,24 +86,6 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-    .pagination {
-      display: flex;
-      justify-content: center;
-      margin-top: 16px;
-      gap: 8px;
-    }
-    .pagination button {
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      background: white;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .pagination button.active {
-      background: #FFD54F;
-      color: white;
-      border-color: #FFD54F;
-    }
   </style>
 </head>
 <body>
@@ -112,7 +94,7 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Panel Admin</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu server...</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
       </div>
     </div>
     <div class="icons">
@@ -154,8 +136,7 @@
           </div>
           <div class="filter-item">
             <select id="fShow" class="filter-select">
-              <option value="10">Tampilkan 10</option>
-              <option value="50" selected>Tampilkan 50</option>
+              <option value="50">Tampilkan 50</option>
               <option value="100">Tampilkan 100</option>
               <option value="200">Tampilkan 200</option>
               <option value="all">Tampilkan Semua</option>
@@ -170,7 +151,6 @@
               <tr>
                 <th>Waktu</th>
                 <th>Nama</th>
-                <th>Shift</th>
                 <th>Jenis</th>
                 <th>Status</th>
                 <th>Koordinat</th>
@@ -179,16 +159,10 @@
             </thead>
             <tbody id="tableBody">
               <tr>
-                <td colspan="7" style="text-align:center;padding:20px">Memuat data presensi...</td>
+                <td colspan="6" style="text-align:center">Memuat data...</td>
               </tr>
             </tbody>
           </table>
-        </div>
-
-        <div id="pagination" class="pagination" style="display:none">
-          <button id="prevPage">Sebelumnya</button>
-          <span id="pageInfo">Halaman 1 dari 1</span>
-          <button id="nextPage">Selanjutnya</button>
         </div>
       </section>
     </div>
@@ -223,20 +197,23 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
   <script>
+    // Inisialisasi Firebase
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
     // Variabel global
     let currentUser = null;
-    let presenceData = [];
-    let filteredData = [];
-    let currentPage = 1;
-    let itemsPerPage = 50;
-    let totalPages = 1;
+    let presences = [];
 
-    // Fungsi untuk memuat data profil
-    window.loadProfileData = async function(uid) {
+    // Elemen UI
+    const $ = (sel) => document.querySelector(sel);
+
+    // Fungsi untuk memuat profil pengguna
+    async function loadUserProfile() {
       try {
-        const userDoc = await firebase.firestore().collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          const userData = userDoc.data();
+        const doc = await db.collection('users').doc(currentUser.uid).get();
+        if (doc.exists) {
+          const userData = doc.data();
           $('#nama').value = userData.nama || '';
           $('#alamat').value = userData.alamat || '';
           if (userData.photoURL) {
@@ -244,302 +221,223 @@
           }
         }
       } catch (error) {
-        console.error('Error loading profile data:', error);
+        console.error('Error loading user profile:', error);
+        app.toast('Gagal memuat profil', 'error');
       }
-    };
+    }
 
-    // Fungsi untuk memuat data presensi
-    window.loadPresenceData = async function() {
+    // Fungsi untuk menyimpan profil pengguna
+    async function saveProfile() {
+      const nama = $('#nama').value.trim();
+      const alamat = $('#alamat').value.trim();
+      const file = $('#pfpFile').files[0];
+
       try {
-        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px">Memuat data presensi...</td></tr>';
-        
-        const snapshot = await firebase.firestore()
-          .collection('presensi')
-          .orderBy('waktu', 'desc')
+        let photoURL = currentUser.photoURL;
+        if (file) {
+          // Kompres dan upload gambar
+          const compressedImage = await app.compressImage(file);
+          photoURL = await app.uploadImageToCloudinary(compressedImage);
+        }
+
+        await db.collection('users').doc(currentUser.uid).set({
+          nama,
+          alamat,
+          photoURL,
+          role: 'admin'
+        }, { merge: true });
+
+        app.toast('Profil berhasil disimpan', 'success');
+        $('#profileDlg').close();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        app.toast('Gagal menyimpan profil', 'error');
+      }
+    }
+
+    // Fungsi untuk mengupdate waktu server
+    function updateServerTime() {
+      const now = new Date();
+      $('#serverTime').textContent = app.formatTanggalWaktu(now);
+    }
+
+    // Fungsi untuk memuat riwayat presensi
+    async function loadPresences() {
+      try {
+        const snapshot = await db.collection('presences')
+          .orderBy('timestamp', 'desc')
           .get();
         
-        presenceData = [];
+        presences = [];
         snapshot.forEach(doc => {
           const data = doc.data();
-          presenceData.push({
-            id: doc.id,
+          presences.push({ 
+            id: doc.id, 
             ...data,
-            waktu: data.waktu ? data.waktu.toDate() : new Date()
+            // Convert Firestore Timestamp to Date
+            timestamp: data.timestamp ? data.timestamp.toDate() : new Date()
           });
         });
-        
-        applyFilters();
-        
-      } catch (error) {
-        console.error('Error loading presence data:', error);
-        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--bad)">Gagal memuat data presensi</td></tr>';
-        toast('Gagal memuat data presensi: ' + error.message, 'error');
-      }
-    };
 
-    // Fungsi untuk menerapkan filter
-    function applyFilters() {
+        renderPresences(presences);
+      } catch (error) {
+        console.error('Error loading presences:', error);
+        app.toast('Gagal memuat riwayat presensi', 'error');
+      }
+    }
+
+    // Fungsi untuk merender riwayat presensi ke tabel
+    function renderPresences(data) {
+      const tbody = $('#tableBody');
+      tbody.innerHTML = '';
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
+        return;
+      }
+
+      data.forEach(presence => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${app.formatTanggalWaktu(presence.timestamp)}</td>
+          <td>${presence.nama}</td>
+          <td>${presence.jenis}</td>
+          <td><span class="status ${getStatusClass(presence.status)}">${presence.status}</span></td>
+          <td>${presence.coordinates ? `${presence.coordinates.latitude}, ${presence.coordinates.longitude}` : '-'}</td>
+          <td><a href="${presence.photoURL}" target="_blank">Lihat Foto</a></td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    // Fungsi untuk mendapatkan class status
+    function getStatusClass(status) {
+      return status === 'Tepat Waktu' ? 's-good' :
+             status === 'Terlambat' ? 's-warn' :
+             status === 'Izin' ? 's-good' : 's-bad';
+    }
+
+    // Fungsi untuk mengekspor CSV
+    function exportToCSV() {
+      // Filter data berdasarkan input pengguna
       const namaFilter = $('#fNama').value.toLowerCase();
       const periode = $('#fPeriode').value;
-      const showValue = $('#fShow').value;
-      
-      itemsPerPage = showValue === 'all' ? presenceData.length : parseInt(showValue);
-      
-      // Filter berdasarkan nama
-      filteredData = presenceData.filter(item => {
-        return item.nama.toLowerCase().includes(namaFilter);
-      });
-      
+      const showAll = $('#fShow').value === 'all';
+
+      let filteredData = presences.filter(p => 
+        p.nama.toLowerCase().includes(namaFilter)
+      );
+
       // Filter berdasarkan periode
       const now = new Date();
-      if (periode !== 'all') {
-        filteredData = filteredData.filter(item => {
-          const itemDate = item.waktu;
-          
-          switch (periode) {
-            case 'harian':
-              return itemDate.toDateString() === now.toDateString();
-            case 'mingguan':
-              const weekStart = new Date(now);
-              weekStart.setDate(now.getDate() - now.getDay());
-              weekStart.setHours(0, 0, 0, 0);
-              
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekStart.getDate() + 6);
-              weekEnd.setHours(23, 59, 59, 999);
-              
-              return itemDate >= weekStart && itemDate <= weekEnd;
-            case 'bulanan':
-              return itemDate.getMonth() === now.getMonth() && 
-                     itemDate.getFullYear() === now.getFullYear();
-            case 'tahunan':
-              return itemDate.getFullYear() === now.getFullYear();
-            case 'custom':
-              const dari = new Date($('#fDari').value);
-              const sampai = new Date($('#fSampai').value);
-              sampai.setHours(23, 59, 59, 999);
-              
-              return itemDate >= dari && itemDate <= sampai;
-            default:
-              return true;
-          }
+      if (periode === 'harian') {
+        filteredData = filteredData.filter(p => {
+          return p.timestamp.toDateString() === now.toDateString();
+        });
+      } else if (periode === 'mingguan') {
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filteredData = filteredData.filter(p => {
+          return p.timestamp >= oneWeekAgo;
+        });
+      } else if (periode === 'bulanan') {
+        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        filteredData = filteredData.filter(p => {
+          return p.timestamp >= oneMonthAgo;
+        });
+      } else if (periode === 'tahunan') {
+        const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        filteredData = filteredData.filter(p => {
+          return p.timestamp >= oneYearAgo;
+        });
+      } else if (periode === 'custom') {
+        const dari = new Date($('#fDari').value);
+        const sampai = new Date($('#fSampai').value);
+        filteredData = filteredData.filter(p => {
+          return p.timestamp >= dari && p.timestamp <= sampai;
         });
       }
-      
-      // Urutkan berdasarkan nama kemudian waktu
+
+      // Batasi jumlah data jika tidak memilih "all"
+      if (!showAll) {
+        const limit = parseInt($('#fShow').value);
+        filteredData = filteredData.slice(0, limit);
+      }
+
+      // Urutkan berdasarkan nama dan tanggal
       filteredData.sort((a, b) => {
         if (a.nama < b.nama) return -1;
         if (a.nama > b.nama) return 1;
-        return b.waktu - a.waktu;
+        return a.timestamp - b.timestamp;
       });
-      
-      totalPages = Math.ceil(filteredData.length / itemsPerPage);
-      currentPage = 1;
-      
-      renderTable();
-      updatePagination();
-    }
 
-    // Fungsi untuk merender tabel
-    function renderTable() {
-      if (filteredData.length === 0) {
-        $('#tableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px">Tidak ada data presensi</td></tr>';
-        $('#pagination').style.display = 'none';
-        return;
-      }
-      
-      const start = (currentPage - 1) * itemsPerPage;
-      const end = start + itemsPerPage;
-      const pageData = filteredData.slice(start, end);
-      
-      let tableHTML = '';
-      
-      pageData.forEach(item => {
-        const waktu = item.waktu.toLocaleString('id-ID', {
-          weekday: 'short',
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        
-        let statusClass = 's-good';
-        if (item.status === 'Terlambat') statusClass = 's-warn';
-        if (item.status === 'Di luar sesi presensi' || item.status === 'Libur') statusClass = 's-bad';
-        
-        tableHTML += `
-          <tr>
-            <td>${waktu}</td>
-            <td>${item.nama}</td>
-            <td>${item.shift || '-'}</td>
-            <td>${item.jenis}</td>
-            <td><span class="status ${statusClass}">${item.status}</span></td>
-            <td>${item.koordinat ? `${item.koordinat.latitude.toFixed(6)}, ${item.koordinat.longitude.toFixed(6)}` : '-'}</td>
-            <td><a href="${item.foto}" target="_blank">Lihat Foto</a></td>
-          </tr>
-        `;
-      });
-      
-      $('#tableBody').innerHTML = tableHTML;
-      $('#pagination').style.display = totalPages > 1 ? 'flex' : 'none';
-    }
-
-    // Fungsi untuk update pagination
-    function updatePagination() {
-      $('#pageInfo').textContent = `Halaman ${currentPage} dari ${totalPages}`;
-      $('#prevPage').disabled = currentPage === 1;
-      $('#nextPage').disabled = currentPage === totalPages;
-    }
-
-    // Fungsi untuk export CSV
-    function exportToCSV() {
-      if (filteredData.length === 0) {
-        toast('Tidak ada data untuk diekspor', 'warning');
-        return;
-      }
-      
-      // Format data sesuai STDR
-      const csvData = [];
-      const headers = ['Nama', 'Tanggal', 'Shift', 'Jenis', 'Status', 'Koordinat'];
-      csvData.push(headers);
-      
-      // Kelompokkan data berdasarkan nama
-      const groupedData = {};
-      filteredData.forEach(item => {
-        if (!groupedData[item.nama]) {
-          groupedData[item.nama] = [];
-        }
-        
-        const dateStr = item.waktu.toLocaleDateString('id-ID', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        });
-        
-        groupedData[item.nama].push({
-          tanggal: dateStr,
-          shift: item.shift || '-',
-          jenis: item.jenis,
-          status: item.status,
-          koordinat: item.koordinat ? `${item.koordinat.latitude.toFixed(6)}, ${item.koordinat.longitude.toFixed(6)}` : '-'
-        });
-      });
-      
-      // Urutkan nama alfabetis
-      const sortedNames = Object.keys(groupedData).sort();
-      
       // Format data untuk CSV
-      sortedNames.forEach(nama => {
-        // Urutkan data per karyawan berdasarkan tanggal
-        groupedData[nama].sort((a, b) => {
-          const dateA = new Date(a.tanggal.split('/').reverse().join('-'));
-          const dateB = new Date(b.tanggal.split('/').reverse().join('-'));
-          return dateA - dateB;
-        });
-        
-        // Tambahkan data ke CSV
-        groupedData[nama].forEach(item => {
-          csvData.push([
-            nama,
-            item.tanggal,
-            item.shift,
-            item.jenis,
-            item.status,
-            item.koordinat
-          ]);
-        });
-        
-        // Tambahkan baris kosong antar karyawan
-        csvData.push([]);
+      const csvData = filteredData.map(p => {
+        return {
+          Nama: p.nama,
+          Tanggal: app.formatTanggal(p.timestamp),
+          Shift: p.shift || '',
+          Jenis: p.jenis,
+          Status: p.status,
+          Koordinat: p.coordinates ? `${p.coordinates.latitude}, ${p.coordinates.longitude}` : ''
+        };
       });
-      
-      // Buat file CSV
-      const csvContent = csvData.map(row => row.join(',')).join('\n');
+
+      // Buat CSV
+      const headers = ['Nama', 'Tanggal', 'Shift', 'Jenis', 'Status', 'Koordinat'];
+      const csvContent = [
+        headers.join(','),
+        ...csvData.map(row => headers.map(header => `"${row[header]}"`).join(','))
+      ].join('\n');
+
+      // Unduh file CSV
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      toast('CSV berhasil diekspor', 'success');
     }
 
-    // Setup halaman admin
-    document.addEventListener('DOMContentLoaded', function() {
-      // Update waktu server
-      updateServerTime();
-      setInterval(updateServerTime, 1000);
-      
-      // Setup event listeners
-      $('#applyFilter').addEventListener('click', applyFilters);
-      
-      $('#fPeriode').addEventListener('change', function() {
-        $('#customDateRange').style.display = this.value === 'custom' ? 'flex' : 'none';
-      });
-      
-      $('#exportCsv').addEventListener('click', exportToCSV);
-      
-      $('#prevPage').addEventListener('click', function() {
-        if (currentPage > 1) {
-          currentPage--;
-          renderTable();
-          updatePagination();
-        }
-      });
-      
-      $('#nextPage').addEventListener('click', function() {
-        if (currentPage < totalPages) {
-          currentPage++;
-          renderTable();
-          updatePagination();
-        }
-      });
-      
-      $('#profileBtn').addEventListener('click', function() {
-        $('#profileDlg').showModal();
-      });
-      
-      // Set tanggal default untuk filter custom
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Set default dates for filter
       const today = new Date();
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      
-      $('#fDari').value = firstDay.toISOString().split('T')[0];
+      const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      $('#fDari').value = oneWeekAgo.toISOString().split('T')[0];
       $('#fSampai').value = today.toISOString().split('T')[0];
-    });
-
-    // Update waktu server
-    function updateServerTime() {
-      const now = new Date();
-      const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZone: 'Asia/Jakarta'
-      };
-      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
-    }
-
-    // Register service worker
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then(function(registration) {
-            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-          })
-          .catch(function(error) {
-            console.log('ServiceWorker registration failed: ', error);
-          });
+      
+      // Cek status autentikasi
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          await loadUserProfile();
+          updateServerTime();
+          setInterval(updateServerTime, 1000);
+          await loadPresences();
+        } else {
+          window.location.href = 'index.html';
+        }
       });
-    }
+
+      // Event listener untuk tombol
+      $('#applyFilter').addEventListener('click', () => {
+        loadPresences();
+        app.toast('Filter diterapkan', 'success');
+      });
+
+      $('#fPeriode').addEventListener('change', () => {
+        const period = $('#fPeriode').value;
+        $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+      });
+
+      $('#exportCsv').addEventListener('click', exportToCSV);
+      $('#profileBtn').addEventListener('click', () => $('#profileDlg').showModal());
+      $('#saveProfileBtn').addEventListener('click', saveProfile);
+      $('#logoutBtn').addEventListener('click', app.logout);
+    });
   </script>
 </body>
 </html>
