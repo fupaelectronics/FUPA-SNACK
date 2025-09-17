@@ -1,12 +1,11 @@
 {
   "name": "Presensi FUPA",
   "short_name": "FUPA Presensi",
-  "description": "Sistem presensi digital untuk FUPA Snack",
+  "description": "Sistem presensi untuk karyawan FUPA Snack",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#FFB300",
   "theme_color": "#FFB300",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "https://api.dicebear.com/7.x/initials/svg?seed=FUPA&backgroundColor=ffb300,ffd54f&radius=20",
