@@ -94,11 +94,11 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Panel Admin</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">12 Juni 2023, 10:45:32</div>
       </div>
     </div>
     <div class="icons">
-      <button id="profileBtn" class="icon-btn" title="Profil & akun">
+      <button id="profileBtn" class="icon-btn" title="Profil & akun" onclick="showProfileModal()">
         <span class="material-symbols-rounded">admin_panel_settings</span>
       </button>
     </div>
@@ -181,12 +181,12 @@
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" value="Admin FUPA" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="Jakarta Pusat" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
-        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
-        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
+        <button id="saveProfileBtn" class="btn" onclick="saveProfile()"><span class="material-symbols-rounded">save</span> Simpan</button>
+        <button id="logoutBtn" class="btn" style="background:#222" onclick="doLogout()"><span class="material-symbols-rounded">logout</span> Keluar</button>
       </div>
     </div>
   </dialog>
