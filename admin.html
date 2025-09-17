@@ -98,7 +98,7 @@
       </div>
     </div>
     <div class="icons">
-      <button id="profileBtn" class="icon-btn" title="Profil & akun" onclick="showProfileModal()">
+      <button id="profileBtn" class="icon-btn" title="Profil & akun">
         <span class="material-symbols-rounded">admin_panel_settings</span>
       </button>
     </div>
@@ -122,7 +122,6 @@
           <div class="filter-item">
             <span class="material-symbols-rounded">today</span>
             <select id="fPeriode" class="filter-select">
-              <option value="all">Semua</option>
               <option value="harian">Harian</option>
               <option value="mingguan">Mingguan</option>
               <option value="bulanan">Bulanan</option>
@@ -159,9 +158,7 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr>
-                <td colspan="6" style="text-align:center">Memuat data...</td>
-              </tr>
+              <!-- Data will be populated here -->
             </tbody>
           </table>
         </div>
@@ -185,8 +182,8 @@
         <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" value="Jakarta Pusat" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
-        <button id="saveProfileBtn" class="btn" onclick="saveProfile()"><span class="material-symbols-rounded">save</span> Simpan</button>
-        <button id="logoutBtn" class="btn" style="background:#222" onclick="doLogout()"><span class="material-symbols-rounded">logout</span> Keluar</button>
+        <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
+        <button id="logoutBtn" class="btn" style="background:#222"><span class="material-symbols-rounded">logout</span> Keluar</button>
       </div>
     </div>
   </dialog>
@@ -197,5 +194,241 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
+  <script>
+    let currentUser = null;
+    let currentUserProfile = null;
+    let serverTime = null;
+    let allPresences = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+      initAuth(async (user, userProfile) => {
+        currentUser = user;
+        currentUserProfile = userProfile;
+
+        // Update profile dialog
+        $('#nama').value = userProfile.nama || '';
+        $('#alamat').value = userProfile.alamat || '';
+        if (userProfile.foto) {
+          $('#pfp').src = userProfile.foto;
+        }
+
+        // If profile is incomplete, show dialog
+        if (!userProfile.nama || !userProfile.alamat) {
+          $('#profileDlg').showModal();
+        }
+
+        // Start updating server time
+        updateServerTime();
+
+        // Load presences
+        loadPresences();
+
+        // Event listeners
+        $('#profileBtn').addEventListener('click', () => {
+          $('#profileDlg').showModal();
+        });
+
+        $('#saveProfileBtn').addEventListener('click', saveProfile);
+        $('#logoutBtn').addEventListener('click', logout);
+        $('#exportCsv').addEventListener('click', exportCSV);
+        $('#applyFilter').addEventListener('click', applyFilters);
+        $('#fPeriode').addEventListener('change', toggleCustomDateRange);
+        $('#pfpFile').addEventListener('change', updateProfilePicture);
+      });
+    });
+
+    async function updateServerTime() {
+      // Get server time from Firestore
+      const timeRef = db.collection('serverTime').doc('current');
+      try {
+        const doc = await timeRef.get();
+        if (doc.exists) {
+          serverTime = doc.data().timestamp.toDate();
+        } else {
+          serverTime = new Date(); // Fallback to client time
+        }
+      } catch (error) {
+        console.error('Error getting server time:', error);
+        serverTime = new Date();
+      }
+
+      // Update UI
+      $('#serverTime').textContent = formatDate(serverTime);
+
+      // Update every second
+      setTimeout(updateServerTime, 1000);
+    }
+
+    async function loadPresences(filter = {}) {
+      try {
+        allPresences = await getPresences(filter);
+        renderPresences(allPresences);
+      } catch (error) {
+        console.error('Error loading presences:', error);
+        toast('Gagal memuat riwayat presensi', 'error');
+      }
+    }
+
+    function renderPresences(presences) {
+      const tableBody = $('#tableBody');
+      tableBody.innerHTML = '';
+
+      if (presences.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
+        return;
+      }
+
+      // Apply show filter
+      const showValue = $('#fShow').value;
+      let displayPresences = presences;
+      if (showValue !== 'all') {
+        displayPresences = presences.slice(0, parseInt(showValue));
+      }
+
+      displayPresences.forEach(presence => {
+        const row = document.createElement('tr');
+        const waktu = presence.waktu.toDate();
+        const waktuStr = formatDate(waktu);
+
+        let statusClass = 's-good';
+        if (presence.status === 'Terlambat') {
+          statusClass = 's-warn';
+        } else if (presence.status === 'Di luar sesi presensi' || presence.status === 'Tidak Valid') {
+          statusClass = 's-bad';
+        }
+
+        row.innerHTML = `
+          <td>${waktuStr}</td>
+          <td>${presence.nama}</td>
+          <td>${presence.jenis}</td>
+          <td><span class="status ${statusClass}">${presence.status}</span></td>
+          <td>${presence.koordinat}</td>
+          <td><a href="${presence.selfie}" target="_blank">Lihat Foto</a></td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function applyFilters() {
+      const nama = $('#fNama').value.trim();
+      const periode = $('#fPeriode').value;
+      let dari = null;
+      let sampai = null;
+
+      if (periode === 'custom') {
+        dari = $('#fDari').value;
+        sampai = $('#fSampai').value;
+        if (!dari || !sampai) {
+          toast('Harap isi tanggal untuk periode kustom', 'error');
+          return;
+        }
+      } else {
+        // Set date range based on periode
+        const now = serverTime || new Date();
+        switch (periode) {
+          case 'harian':
+            dari = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            sampai = new Date(dari);
+            sampai.setDate(sampai.getDate() + 1);
+            break;
+          case 'mingguan':
+            const day = now.getDay();
+            dari = new Date(now);
+            dari.setDate(now.getDate() - day);
+            sampai = new Date(dari);
+            sampai.setDate(sampai.getDate() + 7);
+            break;
+          case 'bulanan':
+            dari = new Date(now.getFullYear(), now.getMonth(), 1);
+            sampai = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+            break;
+          case 'tahunan':
+            dari = new Date(now.getFullYear(), 0, 1);
+            sampai = new Date(now.getFullYear() + 1, 0, 1);
+            break;
+        }
+        // Format to YYYY-MM-DD for input fields
+        if (dari && sampai) {
+          $('#fDari').value = formatDateForCSV(dari);
+          $('#fSampai').value = formatDateForCSV(new Date(sampai.getTime() - 1)); // Subtract one day to show inclusive
+        }
+      }
+
+      loadPresences({
+        nama: nama || null,
+        dari: dari,
+        sampai: sampai
+      });
+    }
+
+    function toggleCustomDateRange() {
+      const period = $('#fPeriode').value;
+      $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+    }
+
+    function exportCSV() {
+      if (allPresences.length === 0) {
+        toast('Tidak ada data untuk diekspor', 'error');
+        return;
+      }
+
+      const now = serverTime || new Date();
+      const filename = `presensi_${formatDateForCSV(now)}.csv`;
+      exportToCSV(allPresences, filename);
+      toast('CSV berhasil diekspor', 'success');
+    }
+
+    async function saveProfile() {
+      const nama = $('#nama').value.trim();
+      const alamat = $('#alamat').value.trim();
+
+      if (!nama || !alamat) {
+        toast('Nama dan alamat harus diisi', 'error');
+        return;
+      }
+
+      const updated = await updateUserProfile(currentUser.uid, {
+        nama: nama,
+        alamat: alamat
+      });
+
+      if (updated) {
+        toast('Profil berhasil disimpan', 'success');
+        currentUserProfile.nama = nama;
+        currentUserProfile.alamat = alamat;
+        $('#profileDlg').close();
+      } else {
+        toast('Gagal menyimpan profil', 'error');
+      }
+    }
+
+    async function updateProfilePicture(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      try {
+        const compressedBlob = await compressImage(file);
+        const imageUrl = await uploadToCloudinary(compressedBlob);
+
+        const updated = await updateUserProfile(currentUser.uid, {
+          foto: imageUrl
+        });
+
+        if (updated) {
+          $('#pfp').src = imageUrl;
+          toast('Foto profil berhasil diubah', 'success');
+        } else {
+          toast('Gagal mengubah foto profil', 'error');
+        }
+      } catch (error) {
+        console.error('Error updating profile picture:', error);
+        toast('Gagal mengubah foto profil', 'error');
+      }
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+  </script>
 </body>
 </html>
