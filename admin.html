@@ -151,6 +151,7 @@
               <tr>
                 <th>Waktu</th>
                 <th>Nama</th>
+                <th>Shift</th>
                 <th>Jenis</th>
                 <th>Status</th>
                 <th>Koordinat</th>
@@ -158,9 +159,7 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr>
-                <td colspan="6" style="text-align:center">Memuat data...</td>
-              </tr>
+              <tr><td colspan="7" style="text-align:center">Memuat data...</td></tr>
             </tbody>
           </table>
         </div>
@@ -176,7 +175,7 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
@@ -192,10 +191,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
