@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
@@ -151,7 +152,6 @@
               <tr>
                 <th>Waktu</th>
                 <th>Nama</th>
-                <th>Shift</th>
                 <th>Jenis</th>
                 <th>Status</th>
                 <th>Koordinat</th>
@@ -159,9 +159,30 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr><td colspan="7" style="text-align:center">Memuat data...</td></tr>
+              <tr>
+                <td colspan="6" style="text-align:center">Memuat data...</td>
+              </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3 style="margin:0 0 8px">Profil Admin</h3>
+        <div class="row" style="align-items:center; margin-bottom:12px">
+          <img id="profilePhoto" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:60px;height:60px;border-radius:12px; background:#eee" />
+          <div>
+            <div id="profileName" style="font-weight:600">Admin FUPA</div>
+            <div id="profileEmail" style="font-size:14px; opacity:.8">admin@fupa.id</div>
+          </div>
+        </div>
+        <div class="row">
+          <span class="material-symbols-rounded">home</span>
+          <span id="profileAddress" style="flex:1">Alamat belum diatur</span>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="material-symbols-rounded">admin_panel_settings</span>
+          <span>Role: <span id="userRole">admin</span></span>
         </div>
       </section>
     </div>
@@ -175,12 +196,12 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
-        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
+        <img id="profilePhotoDlg" src="https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="profilePhotoInput" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="nama" placeholder="Nama admin" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="alamat" placeholder="Alamat" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="profileNameInput" placeholder="Nama admin" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="profileAddressInput" placeholder="Alamat" /></div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
         <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
@@ -191,6 +212,10 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
