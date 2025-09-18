@@ -119,10 +119,13 @@
         <h3 style="margin:0 0 8px">Ambil presensi</h3>
         <div class="row" style="justify-content:space-between">
           <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Memuat status...</span></span>
-          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mengambil lokasi...</span></span>
+          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendapatkan lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
-          <div class="camera-placeholder">
+          <video id="video" autoplay playsinline style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></video>
+          <canvas id="canvas" style="display:none;"></canvas>
+          <img id="capturedImage" style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover" />
+          <div id="cameraPlaceholder" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
         </div>
@@ -159,7 +162,7 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <img id="pfp" src="" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="pfpFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
@@ -175,10 +178,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
