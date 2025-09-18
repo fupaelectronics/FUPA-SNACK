@@ -168,26 +168,24 @@
       setTimeout(() => { t.style.display = "none"; }, 2200);
     };
 
-    // Redirect berdasarkan role
+    // Redirect berdasarkan role dari Firestore
     async function redirectByRole(uid) {
       try {
         const userDoc = await db.collection('users').doc(uid).get();
-        if (!userDoc.exists) {
-          await auth.signOut();
-          return null;
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          const role = userData.role;
+          if (role === 'admin') {
+            return "admin.html";
+          } else if (role === 'karyawan') {
+            return "karyawan.html";
+          }
         }
-        
-        const userData = userDoc.data();
-        if (userData.role === 'admin') {
-          return "admin.html";
-        } else if (userData.role === 'karyawan') {
-          return "karyawan.html";
-        } else {
-          await auth.signOut();
-          return null;
-        }
+        // Jika tidak ada role, maka logout
+        await auth.signOut();
+        return null;
       } catch (error) {
-        console.error("Error checking user role:", error);
+        console.error("Error getting user role:", error);
         await auth.signOut();
         return null;
       }
@@ -265,16 +263,6 @@
     document.getElementById('password').addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
         document.getElementById('loginBtn').click();
-      }
-    });
-
-    // Check if user is already logged in
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        const redirectPage = await redirectByRole(user.uid);
-        if (redirectPage) {
-          window.location.href = redirectPage;
-        }
       }
     });
   </script>
