@@ -142,6 +142,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script>
     // Firebase config
     const firebaseConfig = {
@@ -158,6 +159,26 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // UID roles
+    const ADMIN_UIDS = new Set([
+      "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+      "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+    ]);
+
+    const KARYAWAN_UIDS = new Set([
+      "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
+      "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
+      "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
+      "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
+      "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
+      "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
+      "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
+      "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
+      "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
+      "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
+      "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
+    ]);
+
     // Util UI
     const $ = (sel) => document.querySelector(sel);
     const toast = (msg) => {
@@ -168,25 +189,14 @@
       setTimeout(() => { t.style.display = "none"; }, 2200);
     };
 
-    // Redirect berdasarkan role dari Firestore
-    async function redirectByRole(uid) {
-      try {
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          const role = userData.role;
-          if (role === 'admin') {
-            return "admin.html";
-          } else if (role === 'karyawan') {
-            return "karyawan.html";
-          }
-        }
-        // Jika tidak ada role, maka logout
-        await auth.signOut();
-        return null;
-      } catch (error) {
-        console.error("Error getting user role:", error);
-        await auth.signOut();
+    // Redirect berdasarkan role
+    function redirectByRole(uid) {
+      if (ADMIN_UIDS.has(uid)) {
+        return "admin.html";
+      } else if (KARYAWAN_UIDS.has(uid)) {
+        return "karyawan.html";
+      } else {
+        auth.signOut();
         return null;
       }
     }
@@ -231,7 +241,7 @@
         successMessage.style.display = "block";
         
         // Redirect berdasarkan role
-        const redirectPage = await redirectByRole(user.uid);
+        const redirectPage = redirectByRole(user.uid);
         if (redirectPage) {
           setTimeout(() => {
             window.location.href = redirectPage;
