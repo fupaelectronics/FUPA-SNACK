@@ -1,4 +1,4 @@
-// Firebase configuration dengan data kunci yang diberikan
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
   authDomain: "fupa-snack.firebaseapp.com",
@@ -8,24 +8,39 @@ const firebaseConfig = {
   appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
 };
 
-// Inisialisasi Firebase
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
 
-// Variabel global
-let currentUser = null;
-let userData = null;
-let stream = null;
-let currentPhoto = null;
+// UID roles
+const ADMIN_UIDS = new Set([
+  "O1SJ7hYop3UJjDcsA3JqT29aapI3", // karomi@fupa.id
+  "uB2XsyM6fXUj493cRlHCqpe2fxH3"  // annisa@fupa.id
+]);
+
+const KARYAWAN_UIDS = new Set([
+  "7NJ9xoMgQlUbi68CMQWFN5bYvF62", // x@fupa.id
+  "Jn7Fghq1fkNGx8f0z8sTGkxH94E2", // cabang1@fupa.id
+  "vB3i5h6offMxQslKf2U0J1ElpWS2", // cabang2@fupa.id
+  "tIGmvfnqtxf5QJlfPUy9O1uzHJ73", // cabang3@fupa.id
+  "zl7xjZaI6BdCLT7Z2WA34oTcFV42", // cabang4@fupa.id
+  "NainrtLo3BWRSJKImgIBYNLJEIv2", // cabang5@fupa.id
+  "9Y9s8E23TNbMlO9vZBVKQCGGG0Z2", // cabang6@fupa.id
+  "dDq2zTPs12Tn2v0Zh4IdObDcD7g2", // cabang7@fupa.id
+  "Tkqf05IzI9UTvy4BF0nWtZwbz8j2", // cabang8@fupa.id
+  "pMbjHKjsZLWtNHi7PTc8cDJ254w2", // cabang9@fupa.id
+  "G0qTjLBc6MeRMPziNTzIT6N32ZM2"  // cabang10@fupa.id
+]);
 
 // Utility functions
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const showToast = (message, type = 'info') => {
-  const toast = $("#toast");
-  if (!toast) return;
+
+function toast(msg, type = 'info') {
+  const t = $("#toast");
+  if (!t) return alert(msg);
   
   const colors = {
     success: '#2e7d32',
@@ -34,49 +49,104 @@ const showToast = (message, type = 'info') => {
     info: '#111'
   };
   
-  toast.style.backgroundColor = colors[type] || colors.info;
-  toast.textContent = message;
-  toast.style.display = "block";
-  setTimeout(() => { toast.style.display = "none"; }, 3000);
-};
+  t.style.backgroundColor = colors[type] || colors.info;
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 3000);
+}
 
-// Format tanggal Indonesia
-function formatDate(date, includeTime = true) {
+// Format date for display
+function formatDate(date) {
   const options = { 
     weekday: 'long', 
     year: 'numeric', 
     month: 'long', 
-    day: 'numeric'
-  };
-  
-  const timeOptions = {
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'Asia/Jakarta'
+    second: '2-digit'
   };
-  
-  let formatted = date.toLocaleDateString('id-ID', options);
-  if (includeTime) {
-    formatted += ', ' + date.toLocaleTimeString('id-ID', timeOptions);
-  }
-  
-  return formatted;
+  return date.toLocaleDateString('id-ID', options);
 }
 
-// Kompres gambar untuk Cloudinary
+// Format date for storage
+function formatDateForStorage(date) {
+  return date.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+// Check if today is Sunday
+function isSunday() {
+  return new Date().getDay() === 0;
+}
+
+// Get current shift based on time
+function getCurrentShift() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'pagi';
+  if (hour >= 12 && hour < 18) return 'sore';
+  return null;
+}
+
+// Check if in presensi session
+function isInPresensiSession(shift, jenis) {
+  if (jenis === 'izin') return true;
+  
+  const now = new Date();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const timeValue = hour * 100 + minute;
+  
+  if (shift === 'pagi') {
+    if (jenis === 'berangkat') return timeValue >= 530 && timeValue <= 600;
+    if (jenis === 'pulang') return timeValue >= 1000 && timeValue <= 1100;
+  } else if (shift === 'sore') {
+    if (jenis === 'berangkat') return timeValue >= 1400 && timeValue <= 1430;
+    if (jenis === 'pulang') return timeValue >= 1730 && timeValue <= 1830;
+  }
+  
+  return false;
+}
+
+// Check if terlambat
+function isTerlambat(shift, jenis) {
+  if (jenis === 'izin') return false;
+  
+  const now = new Date();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const timeValue = hour * 100 + minute;
+  
+  if (shift === 'pagi') {
+    if (jenis === 'berangkat') return timeValue > 600 && timeValue <= 620;
+    if (jenis === 'pulang') return timeValue > 1100 && timeValue <= 1120;
+  } else if (shift === 'sore') {
+    if (jenis === 'berangkat') return timeValue > 1430 && timeValue <= 1450;
+    if (jenis === 'pulang') return timeValue > 1830 && timeValue <= 1850;
+  }
+  
+  return false;
+}
+
+// Get status presensi
+function getStatusPresensi(shift, jenis) {
+  if (isSunday()) return { status: 'Libur', class: 's-bad' };
+  if (jenis === 'izin') return { status: 'Izin', class: 's-warn' };
+  if (!isInPresensiSession(shift, jenis)) return { status: 'Di luar sesi presensi', class: 's-bad' };
+  if (isTerlambat(shift, jenis)) return { status: 'Terlambat', class: 's-warn' };
+  return { status: 'Tepat Waktu', class: 's-good' };
+}
+
+// Compress image to 50kb and remove metadata
 async function compressImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
-      img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Set maximum dimensions
+        // Calculate new dimensions
         let width = img.width;
         let height = img.height;
         const maxDimension = 1024;
@@ -96,20 +166,36 @@ async function compressImage(file) {
         canvas.width = width;
         canvas.height = height;
         
-        // Draw and compress image
+        // Draw image on canvas
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Remove metadata and compress to 50kb
-        canvas.toBlob((blob) => {
-          resolve(blob);
-        }, 'image/jpeg', 0.7);
+        // Convert to blob with quality adjustment
+        let quality = 0.9;
+        let compressedBlob = null;
+        
+        const tryCompress = () => {
+          canvas.toBlob((blob) => {
+            if (blob.size <= 50 * 1024 || quality <= 0.1) {
+              compressedBlob = blob;
+              resolve(compressedBlob);
+            } else {
+              quality -= 0.1;
+              tryCompress();
+            }
+          }, 'image/jpeg', quality);
+        };
+        
+        tryCompress();
       };
+      img.onerror = reject;
+      img.src = event.target.result;
     };
-    reader.onerror = error => reject(error);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
 
-// Upload ke Cloudinary
+// Upload image to Cloudinary
 async function uploadToCloudinary(blob) {
   const formData = new FormData();
   formData.append('file', blob);
@@ -130,93 +216,36 @@ async function uploadToCloudinary(blob) {
   }
 }
 
-// Fungsi untuk mendapatkan status presensi berdasarkan waktu
-function getPresenceStatus(now, jenis) {
-  const day = now.getDay();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  
-  // Hari Minggu adalah libur
-  if (day === 0) return { status: "Libur", color: "s-bad" };
-  
-  // Jika jenis izin, status adalah "Izin"
-  if (jenis === "izin") return { status: "Izin", color: "s-warn" };
-  
-  // Aturan shift pagi
-  if (userData && userData.shift === "pagi") {
-    if (jenis === "berangkat") {
-      // Berangkat pagi: 05.30–06.00 WIB (tepat waktu), hingga 06.20 (terlambat)
-      const totalMinutes = hour * 60 + minute;
-      if (totalMinutes >= 330 && totalMinutes <= 360) {
-        return { status: "Tepat Waktu", color: "s-good" };
-      } else if (totalMinutes > 360 && totalMinutes <= 380) {
-        return { status: "Terlambat", color: "s-warn" };
-      } else {
-        return { status: "Di luar sesi presensi", color: "s-bad" };
-      }
-    } else if (jenis === "pulang") {
-      // Pulang pagi: 10.00–11.00 WIB (tepat waktu), hingga 11.20 (terlambat)
-      const totalMinutes = hour * 60 + minute;
-      if (totalMinutes >= 600 && totalMinutes <= 660) {
-        return { status: "Tepat Waktu", color: "s-good" };
-      } else if (totalMinutes > 660 && totalMinutes <= 680) {
-        return { status: "Terlambat", color: "s-warn" };
-      } else {
-        return { status: "Di luar sesi presensi", color: "s-bad" };
-      }
-    }
-  }
-  
-  // Aturan shift sore
-  if (userData && userData.shift === "sore") {
-    if (jenis === "berangkat") {
-      // Berangkat sore: 14.00-14.30 WIB (tepat waktu), hingga 14.50 (terlambat)
-      const totalMinutes = hour * 60 + minute;
-      if (totalMinutes >= 840 && totalMinutes <= 870) {
-        return { status: "Tepat Waktu", color: "s-good" };
-      } else if (totalMinutes > 870 && totalMinutes <= 890) {
-        return { status: "Terlambat", color: "s-warn" };
-      } else {
-        return { status: "Di luar sesi presensi", color: "s-bad" };
-      }
-    } else if (jenis === "pulang") {
-      // Pulang sore: 17.30-18.30 WIB (tepat waktu), hingga 18.50 (terlambat)
-      const totalMinutes = hour * 60 + minute;
-      if (totalMinutes >= 1050 && totalMinutes <= 1110) {
-        return { status: "Tepat Waktu", color: "s-good" };
-      } else if (totalMinutes > 1110 && totalMinutes <= 1130) {
-        return { status: "Terlambat", color: "s-warn" };
-      } else {
-        return { status: "Di luar sesi presensi", color: "s-bad" };
-      }
-    }
-  }
-  
-  return { status: "Di luar sesi presensi", color: "s-bad" };
-}
-
-// Fungsi untuk memeriksa apakah sudah melakukan presensi hari ini
-async function checkTodayPresence(jenis) {
-  if (!currentUser) return false;
-  
-  const today = new Date();
-  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  
+// Initialize camera
+async function initCamera() {
   try {
-    const presenceRef = db.collection('presences')
-      .where('userId', '==', currentUser.uid)
-      .where('jenis', '==', jenis)
-      .where('timestamp', '>=', startOfDay);
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user' }, 
+      audio: false 
+    });
     
-    const snapshot = await presenceRef.get();
-    return !snapshot.empty;
+    const video = $('#cameraPreview');
+    if (video) {
+      video.srcObject = stream;
+      video.play();
+    }
+    
+    return stream;
   } catch (error) {
-    console.error('Error checking today presence:', error);
-    return false;
+    console.error('Error accessing camera:', error);
+    toast('Tidak dapat mengakses kamera', 'error');
+    throw error;
   }
 }
 
-// Fungsi untuk mendapatkan lokasi pengguna
+// Take picture from camera
+function takePicture(video, canvas) {
+  const context = canvas.getContext('2d');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg');
+}
+
+// Get current location
 function getCurrentLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -234,578 +263,583 @@ function getCurrentLocation() {
       (error) => {
         reject(error);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   });
 }
 
-// Inisialisasi kamera
-async function initCamera() {
+// Check if user has already presensi today for this type
+async function hasPresensiToday(uid, jenis) {
   try {
-    const video = $("#cameraVideo");
-    if (!video) return;
+    const today = formatDateForStorage(new Date());
+    const presensiRef = db.collection('presences');
+    const snapshot = await presensiRef
+      .where('userId', '==', uid)
+      .where('date', '==', today)
+      .where('jenis', '==', jenis)
+      .get();
     
-    stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }, 
-      audio: false 
-    });
-    
-    video.srcObject = stream;
-    $("#cameraPlaceholder").style.display = "none";
-    video.style.display = "block";
+    return !snapshot.empty;
   } catch (error) {
-    console.error('Error accessing camera:', error);
-    showToast('Tidak dapat mengakses kamera: ' + error.message, 'error');
+    console.error('Error checking presensi:', error);
+    return false;
   }
 }
 
-// Ambil foto dari kamera
-function capturePhoto() {
-  const video = $("#cameraVideo");
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
+// Export to CSV
+function exportToCSV(data, filename) {
+  const csvContent = [];
   
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  // Header
+  csvContent.push(['Nama', 'Tanggal', 'Shift', 'Jenis', 'Status', 'Koordinat'].join(','));
   
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      resolve(blob);
-    }, 'image/jpeg', 0.9);
+  // Data
+  data.forEach(item => {
+    csvContent.push([
+      item.nama,
+      item.tanggal,
+      item.shift,
+      item.jenis,
+      item.status,
+      item.koordinat
+    ].join(','));
   });
+  
+  const blob = new Blob([csvContent.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
-// Fungsi untuk menghentikan kamera
-function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
-  
-  const video = $("#cameraVideo");
-  if (video) {
-    video.srcObject = null;
-    video.style.display = "none";
-  }
-  
-  $("#cameraPlaceholder").style.display = "flex";
-}
-
-// Fungsi untuk memuat data profil pengguna
-async function loadUserProfile() {
-  if (!currentUser) return;
-  
-  try {
-    const userDoc = await db.collection('users').doc(currentUser.uid).get();
-    if (userDoc.exists) {
-      userData = userDoc.data();
-      
-      // Update UI dengan data profil
-      if ($("#profileName")) $("#profileName").textContent = userData.name || currentUser.email;
-      if ($("#profileEmail")) $("#profileEmail").textContent = currentUser.email;
-      if ($("#profileShift")) $("#profileShift").textContent = userData.shift || 'Belum diatur';
-      if ($("#profileAddress")) $("#profileAddress").textContent = userData.address || 'Belum diatur';
-      
-      // Update form edit profil
-      if ($("#editName")) $("#editName").value = userData.name || '';
-      if ($("#editAddress")) $("#editAddress").value = userData.address || '';
-      if ($("#editShift")) $("#editShift").value = userData.shift || 'pagi';
-      
-      // Update foto profil jika ada
-      if (userData.photoURL && $("#profilePhoto")) {
-        $("#profilePhoto").src = userData.photoURL;
-      }
-    } else {
-      // Buat data user baru jika belum ada
-      await db.collection('users').doc(currentUser.uid).set({
-        email: currentUser.email,
-        name: currentUser.email.split('@')[0],
-        shift: 'pagi',
-        role: 'karyawan',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // Muat ulang data
-      await loadUserProfile();
-    }
-  } catch (error) {
-    console.error('Error loading user profile:', error);
-    showToast('Gagal memuat profil pengguna', 'error');
-  }
-}
-
-// Fungsi untuk memperbarui profil pengguna
-async function updateUserProfile(updates) {
-  if (!currentUser) return;
-  
-  try {
-    await db.collection('users').doc(currentUser.uid).update({
-      ...updates,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    // Muat ulang data profil
-    await loadUserProfile();
-    showToast('Profil berhasil diperbarui', 'success');
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    showToast('Gagal memperbarui profil', 'error');
-  }
-}
-
-// Fungsi untuk mengunggah presensi
-async function uploadPresence() {
-  if (!currentUser || !userData) {
-    showToast('Silakan login terlebih dahulu', 'error');
-    return;
-  }
-  
-  const jenis = $("#jenisSelect").value;
-  const statusElement = $("#statusText");
-  
-  // Validasi
-  if (!currentPhoto) {
-    showToast('Ambil foto terlebih dahulu', 'error');
-    return;
-  }
-  
-  // Nonaktifkan tombol upload selama proses
-  $("#uploadBtn").disabled = true;
-  $("#uploadBtn").innerHTML = '<span class="spinner"></span> Mengupload...';
-  
-  try {
-    // Periksa apakah sudah melakukan presensi dengan jenis yang sama hari ini
-    const alreadyPresence = await checkTodayPresence(jenis);
-    if (alreadyPresence && jenis !== 'izin') {
-      showToast(`Anda sudah melakukan presensi ${jenis} hari ini`, 'error');
-      $("#uploadBtn").disabled = false;
-      $("#uploadBtn").innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-      return;
-    }
-    
-    // Dapatkan lokasi terkini
-    const location = await getCurrentLocation();
-    
-    // Dapatkan waktu server
-    const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-    const now = new Date();
-    
-    // Tentukan status presensi
-    const presenceStatus = getPresenceStatus(now, jenis);
-    
-    // Kompres gambar
-    const compressedPhoto = await compressImage(currentPhoto);
-    
-    // Upload ke Cloudinary
-    const photoURL = await uploadToCloudinary(compressedPhoto);
-    
-    // Simpan data presensi ke Firestore
-    await db.collection('presences').add({
-      userId: currentUser.uid,
-      userName: userData.name || currentUser.email,
-      userEmail: currentUser.email,
-      jenis: jenis,
-      status: presenceStatus.status,
-      shift: jenis === 'izin' ? 'Penuh' : userData.shift,
-      coordinates: new firebase.firestore.GeoPoint(location.lat, location.lng),
-      photoURL: photoURL,
-      timestamp: timestamp,
-      createdAt: timestamp
-    });
-    
-    // Reset state
-    currentPhoto = null;
-    $("#previewImage").style.display = "none";
-    $("#cameraPlaceholder").style.display = "flex";
-    $("#snapBtn").disabled = false;
-    $("#snapBtn").innerHTML = '<span class="material-symbols-rounded">photo_camera</span> Ambil selfie';
-    
-    // Tampilkan notifikasi sukses
-    showToast('Presensi berhasil dicatat', 'success');
-    
-    // Perbarui status UI
-    if (statusElement) {
-      statusElement.textContent = presenceStatus.status;
-      statusElement.className = `status ${presenceStatus.color}`;
-    }
-  } catch (error) {
-    console.error('Error uploading presence:', error);
-    showToast('Gagal mengupload presensi: ' + error.message, 'error');
-  } finally {
-    // Aktifkan kembali tombol upload
-    $("#uploadBtn").disabled = false;
-    $("#uploadBtn").innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
-  }
-}
-
-// Fungsi untuk memuat riwayat presensi (admin)
-async function loadPresenceHistory(filters = {}) {
-  if (!currentUser) return;
-  
-  try {
-    let query = db.collection('presences').orderBy('timestamp', 'desc');
-    
-    // Terapkan filter nama jika ada
-    if (filters.name) {
-      query = query.where('userName', '>=', filters.name)
-                  .where('userName', '<=', filters.name + '\uf8ff');
-    }
-    
-    // Terapkan filter tanggal jika ada
-    if (filters.startDate && filters.endDate) {
-      const startDate = new Date(filters.startDate);
-      const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999); // Sampai akhir hari
-      
-      query = query.where('timestamp', '>=', startDate)
-                  .where('timestamp', '<=', endDate);
-    }
-    
-    // Batasi jumlah hasil jika bukan 'all'
-    if (filters.limit && filters.limit !== 'all') {
-      query = query.limit(parseInt(filters.limit));
-    }
-    
-    const snapshot = await query.get();
-    const tableBody = $("#presenceTableBody");
-    
-    if (!tableBody) return;
-    
-    // Kosongkan tabel
-    tableBody.innerHTML = '';
-    
-    if (snapshot.empty) {
-      tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Tidak ada data presensi</td></tr>';
-      return;
-    }
-    
-    // Isi tabel dengan data
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const timestamp = data.timestamp ? data.timestamp.toDate() : new Date();
-      
-      const row = document.createElement('tr');
-      
-      // Tentukan kelas status
-      let statusClass = 's-bad';
-      if (data.status === 'Tepat Waktu') statusClass = 's-good';
-      if (data.status === 'Terlambat') statusClass = 's-warn';
-      if (data.status === 'Izin') statusClass = 's-warn';
-      
-      row.innerHTML = `
-        <td>${formatDate(timestamp)}</td>
-        <td>${data.userName}</td>
-        <td>${data.shift}</td>
-        <td>${data.jenis}</td>
-        <td><span class="status ${statusClass}">${data.status}</span></td>
-        <td>${data.coordinates ? `${data.coordinates.latitude.toFixed(4)}, ${data.coordinates.longitude.toFixed(4)}` : '-'}</td>
-        <td><a href="${data.photoURL}" target="_blank">Lihat Foto</a></td>
-      `;
-      
-      tableBody.appendChild(row);
-    });
-  } catch (error) {
-    console.error('Error loading presence history:', error);
-    showToast('Gagal memuat riwayat presensi', 'error');
-  }
-}
-
-// Fungsi untuk mengekspor data ke CSV
-async function exportToCSV(filters = {}) {
-  if (!currentUser) return;
-  
-  try {
-    let query = db.collection('presences').orderBy('userName').orderBy('timestamp');
-    
-    // Terapkan filter nama jika ada
-    if (filters.name) {
-      query = query.where('userName', '>=', filters.name)
-                  .where('userName', '<=', filters.name + '\uf8ff');
-    }
-    
-    // Terapkan filter tanggal jika ada
-    if (filters.startDate && filters.endDate) {
-      const startDate = new Date(filters.startDate);
-      const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999); // Sampai akhir hari
-      
-      query = query.where('timestamp', '>=', startDate)
-                  .where('timestamp', '<=', endDate);
-    }
-    
-    const snapshot = await query.get();
-    
-    if (snapshot.empty) {
-      showToast('Tidak ada data untuk diekspor', 'warning');
-      return;
-    }
-    
-    // Format data untuk CSV sesuai format STDR
-    let csvContent = "Nama,Tanggal,Shift,Jenis,Status,Koordinat\n";
-    let currentUser = null;
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const timestamp = data.timestamp ? data.timestamp.toDate() : new Date();
-      const dateStr = timestamp.toISOString().split('T')[0];
-      
-      // Jika berganti user, tambahkan baris kosong
-      if (currentUser !== data.userName) {
-        if (currentUser !== null) {
-          csvContent += "\n"; // Baris kosong antar blok user
-        }
-        currentUser = data.userName;
-      }
-      
-      csvContent += `"${data.userName}","${dateStr}","${data.shift}","${data.jenis}","${data.status}","${data.coordinates ? `${data.coordinates.latitude},${data.coordinates.longitude}` : ''}"\n`;
-    });
-    
-    // Buat file dan unduh
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `presensi_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showToast('CSV berhasil diekspor', 'success');
-  } catch (error) {
-    console.error('Error exporting to CSV:', error);
-    showToast('Gagal mengekspor CSV', 'error');
-  }
-}
-
-// Fungsi untuk logout
-function logout() {
-  stopCamera();
-  auth.signOut().then(() => {
-    window.location.href = 'index.html';
-  }).catch(error => {
-    console.error('Error signing out:', error);
-    showToast('Gagal logout', 'error');
-  });
-}
-
-// Inisialisasi aplikasi berdasarkan halaman
+// Initialize app
 function initApp() {
-  // Periksa status autentikasi
+  // Check authentication state
   auth.onAuthStateChanged(async (user) => {
     if (user) {
-      currentUser = user;
+      // User is signed in
+      const userDoc = await db.collection('users').doc(user.uid).get();
       
-      // Muat data profil pengguna
-      await loadUserProfile();
-      
-      // Inisialisasi berdasarkan halaman
-      if (window.location.pathname.includes('karyawan.html')) {
-        initKaryawanPage();
-      } else if (window.location.pathname.includes('admin.html')) {
-        initAdminPage();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        
+        // Redirect based on role
+        if (ADMIN_UIDS.has(user.uid) && !window.location.pathname.endsWith('admin.html')) {
+          window.location.href = 'admin.html';
+        } else if (KARYAWAN_UIDS.has(user.uid) && !window.location.pathname.endsWith('karyawan.html')) {
+          window.location.href = 'karyawan.html';
+        } else {
+          // Load appropriate page content
+          if (window.location.pathname.endsWith('karyawan.html')) {
+            initKaryawanPage(user, userData);
+          } else if (window.location.pathname.endsWith('admin.html')) {
+            initAdminPage(user, userData);
+          }
+        }
+      } else {
+        // User document doesn't exist, create one
+        await db.collection('users').doc(user.uid).set({
+          email: user.email,
+          nama: user.email.split('@')[0],
+          alamat: '',
+          shift: 'pagi',
+          foto: `https://api.dicebear.com/7.x/initials/svg?seed=${user.email}&backgroundColor=ffb300,ffd54f&radius=20`,
+          role: ADMIN_UIDS.has(user.uid) ? 'admin' : 'karyawan',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // Reload page
+        window.location.reload();
       }
     } else {
-      // Redirect ke halaman login jika belum login
-      if (!window.location.pathname.includes('index.html')) {
+      // User is signed out, redirect to login
+      if (!window.location.pathname.endsWith('index.html')) {
         window.location.href = 'index.html';
       }
     }
   });
 }
 
-// Inisialisasi halaman karyawan
-function initKaryawanPage() {
-  // Update waktu server
+// Initialize karyawan page
+function initKaryawanPage(user, userData) {
+  // Update profile data
+  if ($('#nama')) $('#nama').value = userData.nama || '';
+  if ($('#alamat')) $('#alamat').value = userData.alamat || '';
+  if ($('#pfp')) $('#pfp').src = userData.foto || `https://api.dicebear.com/7.x/initials/svg?seed=${user.email}&backgroundColor=ffb300,ffd54f&radius=20`;
+  
+  // Update server time
   function updateServerTime() {
-    const now = new Date();
-    $("#serverTime").textContent = formatDate(now);
-    
-    // Perbarui status presensi berdasarkan waktu
-    const jenis = $("#jenisSelect").value;
-    const statusInfo = getPresenceStatus(now, jenis);
-    
-    if ($("#statusText")) {
-      $("#statusText").textContent = statusInfo.status;
-      $("#statusChip").className = `status ${statusInfo.color}`;
+    if ($('#serverTime')) {
+      $('#serverTime').textContent = formatDate(new Date());
     }
-  }
-  
-  // Inisialisasi waktu
-  updateServerTime();
-  setInterval(updateServerTime, 1000);
-  
-  // Dapatkan lokasi terkini
-  getCurrentLocation().then(location => {
-    $("#locText").textContent = `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
-  }).catch(error => {
-    console.error('Error getting location:', error);
-    $("#locText").textContent = 'Tidak dapat mengakses lokasi';
-  });
-  
-  // Inisialisasi kamera
-  if ($("#cameraVideo")) {
-    initCamera();
-  }
-  
-  // Event listener untuk tombol ambil foto
-  $("#snapBtn").addEventListener('click', async () => {
-    try {
-      $("#snapBtn").disabled = true;
-      $("#snapBtn").innerHTML = '<span class="spinner"></span> Memproses...';
-      
-      currentPhoto = await capturePhoto();
-      
-      // Tampilkan pratinjau
-      const previewUrl = URL.createObjectURL(currentPhoto);
-      $("#previewImage").src = previewUrl;
-      $("#previewImage").style.display = "block";
-      $("#cameraVideo").style.display = "none";
-      
-      // Aktifkan tombol upload
-      $("#uploadBtn").disabled = false;
-      
-      showToast('Foto berhasil diambil', 'success');
-    } catch (error) {
-      console.error('Error capturing photo:', error);
-      showToast('Gagal mengambil foto', 'error');
-    } finally {
-      $("#snapBtn").disabled = false;
-      $("#snapBtn").innerHTML = '<span class="material-symbols-rounded">photo_camera</span> Ambil selfie';
-    }
-  });
-  
-  // Event listener untuk tombol upload
-  $("#uploadBtn").addEventListener('click', uploadPresence);
-  
-  // Event listener untuk perubahan jenis presensi
-  $("#jenisSelect").addEventListener('change', () => {
-    const now = new Date();
-    const jenis = $("#jenisSelect").value;
-    const statusInfo = getPresenceStatus(now, jenis);
-    
-    $("#statusText").textContent = statusInfo.status;
-    $("#statusChip").className = `status ${statusInfo.color}`;
-  });
-  
-  // Event listener untuk dialog profil
-  $("#profileBtn").addEventListener('click', () => {
-    $("#profileDlg").showModal();
-  });
-  
-  // Event listener untuk simpan profil
-  $("#saveProfileBtn").addEventListener('click', () => {
-    const name = $("#editName").value;
-    const address = $("#editAddress").value;
-    const shift = $("#editShift").value;
-    
-    updateUserProfile({ name, address, shift });
-    $("#profileDlg").close();
-  });
-  
-  // Event listener untuk logout
-  $("#logoutBtn").addEventListener('click', logout);
-}
-
-// Inisialisasi halaman admin
-function initAdminPage() {
-  // Update waktu server
-  function updateServerTime() {
-    const now = new Date();
-    $("#serverTime").textContent = formatDate(now);
   }
   
   updateServerTime();
   setInterval(updateServerTime, 1000);
   
-  // Muat riwayat presensi
-  loadPresenceHistory();
+  // Update status presensi
+  function updatePresenceStatus() {
+    if (isSunday()) {
+      $('#statusText').textContent = 'Libur';
+      $('#statusChip').className = 'status s-bad';
+      $('#statusChip').innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">Libur</span>';
+      return;
+    }
+    
+    const shift = userData.shift || 'pagi';
+    const currentShift = getCurrentShift();
+    
+    if (currentShift !== shift) {
+      $('#statusText').textContent = 'Di luar sesi presensi';
+      $('#statusChip').className = 'status s-bad';
+      $('#statusChip').innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">Di luar sesi presensi</span>';
+      return;
+    }
+    
+    const jenis = $('#jenis') ? $('#jenis').value : 'berangkat';
+    const status = getStatusPresensi(shift, jenis);
+    
+    $('#statusText').textContent = status.status;
+    $('#statusChip').className = `status ${status.class}`;
+    
+    let icon = 'check_circle';
+    if (status.class === 's-warn') icon = 'warning';
+    if (status.class === 's-bad') icon = 'error';
+    
+    $('#statusChip').innerHTML = `<span class="material-symbols-rounded">${icon}</span><span id="statusText">${status.status}</span>`;
+  }
   
-  // Event listener untuk filter
-  $("#applyFilter").addEventListener('click', () => {
-    const filters = {
-      name: $("#fNama").value.trim() || null,
-      startDate: $("#fDari").value || null,
-      endDate: $("#fSampai").value || null,
-      limit: $("#fShow").value
-    };
-    
-    loadPresenceHistory(filters);
-  });
+  updatePresenceStatus();
   
-  // Event listener untuk perubahan periode
-  $("#fPeriode").addEventListener('change', () => {
-    const period = $("#fPeriode").value;
-    $("#customDateRange").style.display = period === 'custom' ? 'flex' : 'none';
-    
-    // Set tanggal otomatis berdasarkan periode
-    const today = new Date();
-    let startDate, endDate;
-    
-    switch(period) {
-      case 'harian':
-        startDate = today;
-        endDate = today;
-        break;
-      case 'mingguan':
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - today.getDay()); // Awal minggu (Minggu)
-        endDate = new Date(today);
-        endDate.setDate(today.getDate() + (6 - today.getDay())); // Akhir minggu (Sabtu)
-        break;
-      case 'bulanan':
-        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        break;
-      case 'tahunan':
-        startDate = new Date(today.getFullYear(), 0, 1);
-        endDate = new Date(today.getFullYear(), 11, 31);
-        break;
-      default:
-        // custom - tidak ada perubahan otomatis
+  // Update location
+  function updateLocation() {
+    getCurrentLocation().then(location => {
+      if ($('#locText')) {
+        $('#locText').textContent = `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`;
+      }
+    }).catch(error => {
+      console.error('Error getting location:', error);
+      if ($('#locText')) {
+        $('#locText').textContent = 'Tidak dapat mengakses lokasi';
+      }
+    });
+  }
+  
+  updateLocation();
+  
+  // Initialize camera
+  let cameraStream = null;
+  const video = $('#cameraPreview');
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  
+  if (video) {
+    initCamera().then(stream => {
+      cameraStream = stream;
+    }).catch(error => {
+      console.error('Error initializing camera:', error);
+    });
+  }
+  
+  // Event listeners
+  if ($('#snapBtn')) {
+    $('#snapBtn').addEventListener('click', () => {
+      if (!cameraStream) {
+        toast('Kamera belum siap', 'error');
         return;
-    }
-    
-    if (startDate && endDate) {
-      $("#fDari").value = startDate.toISOString().split('T')[0];
-      $("#fSampai").value = endDate.toISOString().split('T')[0];
-    }
-  });
+      }
+      
+      const photoData = takePicture(video, canvas);
+      $('#photoPreview').src = photoData;
+      $('#photoPreview').style.display = 'block';
+      $('#cameraPreview').style.display = 'none';
+      $('#uploadBtn').disabled = false;
+      
+      toast('Foto berhasil diambil', 'success');
+    });
+  }
   
-  // Event listener untuk ekspor CSV
-  $("#exportCsv").addEventListener('click', () => {
-    const filters = {
-      name: $("#fNama").value.trim() || null,
-      startDate: $("#fDari").value || null,
-      endDate: $("#fSampai").value || null
-    };
-    
-    exportToCSV(filters);
-  });
+  if ($('#uploadBtn')) {
+    $('#uploadBtn').addEventListener('click', async () => {
+      const jenis = $('#jenis').value;
+      const hasPresensi = await hasPresensiToday(user.uid, jenis);
+      
+      if (hasPresensi && jenis !== 'izin') {
+        toast(`Anda sudah melakukan presensi ${jenis} hari ini`, 'error');
+        return;
+      }
+      
+      $('#uploadBtn').disabled = true;
+      $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+      
+      try {
+        // Get current location
+        const location = await getCurrentLocation();
+        const locText = `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`;
+        
+        // Get status
+        const shift = userData.shift;
+        const statusInfo = getStatusPresensi(shift, jenis);
+        
+        // Convert dataURL to blob
+        const photoData = $('#photoPreview').src;
+        const response = await fetch(photoData);
+        const blob = await response.blob();
+        
+        // Compress and upload image
+        const compressedBlob = await compressImage(blob);
+        const photoUrl = await uploadToCloudinary(compressedBlob);
+        
+        // Save to Firestore
+        await db.collection('presences').add({
+          userId: user.uid,
+          nama: userData.nama,
+          email: user.email,
+          shift: jenis === 'izin' ? 'Penuh' : shift,
+          jenis: jenis,
+          status: statusInfo.status,
+          koordinat: locText,
+          foto: photoUrl,
+          date: formatDateForStorage(new Date()),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        toast('Presensi berhasil dicatat', 'success');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+        
+        // Reset camera
+        $('#photoPreview').style.display = 'none';
+        $('#cameraPreview').style.display = 'block';
+        
+      } catch (error) {
+        console.error('Error uploading presensi:', error);
+        toast('Gagal mengupload presensi', 'error');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+      }
+    });
+  }
   
-  // Event listener untuk dialog profil
-  $("#profileBtn").addEventListener('click', () => {
-    $("#profileDlg").showModal();
-  });
+  if ($('#jenis')) {
+    $('#jenis').addEventListener('change', updatePresenceStatus);
+  }
   
-  // Event listener untuk simpan profil
-  $("#saveProfileBtn").addEventListener('click', () => {
-    const name = $("#editName").value;
-    const address = $("#editAddress").value;
-    
-    updateUserProfile({ name, address });
-    $("#profileDlg").close();
-  });
+  if ($('#profileBtn')) {
+    $('#profileBtn').addEventListener('click', () => {
+      $('#profileDlg').showModal();
+    });
+  }
   
-  // Event listener untuk logout
-  $("#logoutBtn").addEventListener('click', logout);
+  if ($('#saveProfileBtn')) {
+    $('#saveProfileBtn').addEventListener('click', async () => {
+      const nama = $('#nama').value;
+      const alamat = $('#alamat').value;
+      const shift = $('#shiftSelect').value;
+      const file = $('#pfpFile').files[0];
+      
+      try {
+        let fotoUrl = userData.foto;
+        
+        if (file) {
+          const compressedBlob = await compressImage(file);
+          fotoUrl = await uploadToCloudinary(compressedBlob);
+        }
+        
+        await db.collection('users').doc(user.uid).update({
+          nama: nama,
+          alamat: alamat,
+          shift: shift,
+          foto: fotoUrl
+        });
+        
+        toast('Profil berhasil disimpan', 'success');
+        $('#profileDlg').close();
+        window.location.reload();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        toast('Gagal menyimpan profil', 'error');
+      }
+    });
+  }
+  
+  if ($('#logoutBtn')) {
+    $('#logoutBtn').addEventListener('click', () => {
+      auth.signOut().then(() => {
+        toast('Berhasil keluar', 'success');
+        window.location.href = 'index.html';
+      }).catch(error => {
+        console.error('Error signing out:', error);
+        toast('Gagal keluar', 'error');
+      });
+    });
+  }
+  
+  if ($('#pfpFile')) {
+    $('#pfpFile').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          $('#pfp').src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
 }
 
-// Jalankan inisialisasi aplikasi ketika DOM siap
+// Initialize admin page
+function initAdminPage(user, userData) {
+  // Update profile data
+  if ($('#nama')) $('#nama').value = userData.nama || '';
+  if ($('#alamat')) $('#alamat').value = userData.alamat || '';
+  if ($('#pfp')) $('#pfp').src = userData.foto || `https://api.dicebear.com/7.x/initials/svg?seed=${user.email}&backgroundColor=ffb300,ffd54f&radius=20`;
+  
+  // Update server time
+  function updateServerTime() {
+    if ($('#serverTime')) {
+      $('#serverTime').textContent = formatDate(new Date());
+    }
+  }
+  
+  updateServerTime();
+  setInterval(updateServerTime, 1000);
+  
+  // Load presensi data
+  let allPresences = [];
+  let filteredPresences = [];
+  
+  async function loadPresences() {
+    try {
+      const snapshot = await db.collection('presences')
+        .orderBy('timestamp', 'desc')
+        .get();
+      
+      allPresences = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        allPresences.push({
+          id: doc.id,
+          ...data,
+          tanggal: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleDateString('id-ID') : '-',
+          jam: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString('id-ID') : '-'
+        });
+      });
+      
+      applyFilters();
+    } catch (error) {
+      console.error('Error loading presences:', error);
+      toast('Gagal memuat data presensi', 'error');
+    }
+  }
+  
+  function applyFilters() {
+    const namaFilter = $('#fNama').value.toLowerCase();
+    const periodeFilter = $('#fPeriode').value;
+    const showFilter = $('#fShow').value;
+    
+    filteredPresences = allPresences.filter(presence => {
+      // Filter by name
+      if (namaFilter && !presence.nama.toLowerCase().includes(namaFilter)) {
+        return false;
+      }
+      
+      // Filter by period
+      if (periodeFilter !== 'all') {
+        const presenceDate = presence.timestamp ? new Date(presence.timestamp.toDate()) : new Date();
+        const today = new Date();
+        
+        if (periodeFilter === 'harian') {
+          if (presenceDate.toDateString() !== today.toDateString()) return false;
+        } else if (periodeFilter === 'mingguan') {
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          weekStart.setHours(0, 0, 0, 0);
+          
+          if (presenceDate < weekStart) return false;
+        } else if (periodeFilter === 'bulanan') {
+          if (presenceDate.getMonth() !== today.getMonth() || 
+              presenceDate.getFullYear() !== today.getFullYear()) {
+            return false;
+          }
+        } else if (periodeFilter === 'tahunan') {
+          if (presenceDate.getFullYear() !== today.getFullYear()) return false;
+        } else if (periodeFilter === 'custom') {
+          const dariDate = new Date($('#fDari').value);
+          const sampaiDate = new Date($('#fSampai').value);
+          sampaiDate.setHours(23, 59, 59, 999);
+          
+          if (presenceDate < dariDate || presenceDate > sampaiDate) return false;
+        }
+      }
+      
+      return true;
+    });
+    
+    // Apply show filter
+    if (showFilter !== 'all') {
+      filteredPresences = filteredPresences.slice(0, parseInt(showFilter));
+    }
+    
+    renderPresences();
+  }
+  
+  function renderPresences() {
+    const tableBody = $('#tableBody');
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = '';
+    
+    if (filteredPresences.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px">Tidak ada data presensi</td></tr>';
+      return;
+    }
+    
+    filteredPresences.forEach(presence => {
+      const row = document.createElement('tr');
+      
+      // Determine status class
+      let statusClass = 's-good';
+      if (presence.status === 'Terlambat') statusClass = 's-warn';
+      if (presence.status === 'Libur' || presence.status === 'Di luar sesi presensi') statusClass = 's-bad';
+      if (presence.status === 'Izin') statusClass = 's-warn';
+      
+      row.innerHTML = `
+        <td>${presence.tanggal}<br>${presence.jam}</td>
+        <td>${presence.nama}</td>
+        <td>${presence.jenis}</td>
+        <td><span class="status ${statusClass}">${presence.status}</span></td>
+        <td>${presence.koordinat}</td>
+        <td><a href="${presence.foto}" target="_blank">Lihat Foto</a></td>
+      `;
+      
+      tableBody.appendChild(row);
+    });
+  }
+  
+  // Event listeners
+  if ($('#applyFilter')) {
+    $('#applyFilter').addEventListener('click', applyFilters);
+  }
+  
+  if ($('#fPeriode')) {
+    $('#fPeriode').addEventListener('change', () => {
+      const period = $('#fPeriode').value;
+      $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+      applyFilters();
+    });
+  }
+  
+  if ($('#fNama')) {
+    $('#fNama').addEventListener('input', applyFilters);
+  }
+  
+  if ($('#fShow')) {
+    $('#fShow').addEventListener('change', applyFilters);
+  }
+  
+  if ($('#fDari') && $('#fSampai')) {
+    $('#fDari').addEventListener('change', applyFilters);
+    $('#fSampai').addEventListener('change', applyFilters);
+  }
+  
+  if ($('#exportCsv')) {
+    $('#exportCsv').addEventListener('click', () => {
+      const namaFilter = $('#fNama').value;
+      const periodeFilter = $('#fPeriode').value;
+      
+      let filename = `presensi-${new Date().toISOString().split('T')[0]}`;
+      if (namaFilter) filename += `-${namaFilter}`;
+      if (periodeFilter !== 'all') filename += `-${periodeFilter}`;
+      
+      filename += '.csv';
+      
+      const csvData = filteredPresences.map(p => ({
+        nama: p.nama,
+        tanggal: p.tanggal,
+        shift: p.shift,
+        jenis: p.jenis,
+        status: p.status,
+        koordinat: p.koordinat
+      }));
+      
+      exportToCSV(csvData, filename);
+      toast('CSV berhasil diekspor', 'success');
+    });
+  }
+  
+  if ($('#profileBtn')) {
+    $('#profileBtn').addEventListener('click', () => {
+      $('#profileDlg').showModal();
+    });
+  }
+  
+  if ($('#saveProfileBtn')) {
+    $('#saveProfileBtn').addEventListener('click', async () => {
+      const nama = $('#nama').value;
+      const alamat = $('#alamat').value;
+      const file = $('#pfpFile').files[0];
+      
+      try {
+        let fotoUrl = userData.foto;
+        
+        if (file) {
+          const compressedBlob = await compressImage(file);
+          fotoUrl = await uploadToCloudinary(compressedBlob);
+        }
+        
+        await db.collection('users').doc(user.uid).update({
+          nama: nama,
+          alamat: alamat,
+          foto: fotoUrl
+        });
+        
+        toast('Profil berhasil disimpan', 'success');
+        $('#profileDlg').close();
+        window.location.reload();
+      } catch (error) {
+        console.error('Error saving profile:', error);
+        toast('Gagal menyimpan profil', 'error');
+      }
+    });
+  }
+  
+  if ($('#logoutBtn')) {
+    $('#logoutBtn').addEventListener('click', () => {
+      auth.signOut().then(() => {
+        toast('Berhasil keluar', 'success');
+        window.location.href = 'index.html';
+      }).catch(error => {
+        console.error('Error signing out:', error);
+        toast('Gagal keluar', 'error');
+      });
+    });
+  }
+  
+  if ($('#pfpFile')) {
+    $('#pfpFile').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          $('#pfp').src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+  
+  // Load initial data
+  loadPresences();
+}
+
+// Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
