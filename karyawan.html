@@ -8,7 +8,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
-  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
@@ -120,19 +119,19 @@
         <h3 style="margin:0 0 8px">Ambil presensi</h3>
         <div class="row" style="justify-content:space-between">
           <span id="statusChip" class="status s-good"><span class="material-symbols-rounded">check_circle</span><span id="statusText">Memuat status...</span></span>
-          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Memuat lokasi...</span></span>
+          <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">Mendeteksi lokasi...</span></span>
         </div>
         <div style="margin-top:10px">
           <div id="cameraPlaceholder" class="camera-placeholder">
             <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
           </div>
-          <video id="cameraPreview" autoplay playsinline style="display:none"></video>
-          <img id="photoPreview" style="display:none" />
+          <video id="cameraVideo" autoplay playsinline style="display:none;"></video>
+          <img id="previewImage" style="display:none;" alt="Pratinjau foto">
         </div>
         <div class="camera-controls">
           <div class="input">
             <span class="material-symbols-rounded">assignment</span>
-            <select id="jenis">
+            <select id="jenisSelect">
               <option value="berangkat">Berangkat</option>
               <option value="pulang">Pulang</option>
               <option value="izin">Izin</option>
@@ -153,21 +152,29 @@
       </section>
 
       <section class="card">
-        <h3 style="margin:0 0 8px">Profil</h3>
-        <div class="row" style="align-items:center; margin-bottom:12px">
+        <h3 style="margin:0 0 8px">Profil Saya</h3>
+        <div class="row">
           <img id="profilePhoto" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:60px;height:60px;border-radius:12px; background:#eee" />
           <div>
-            <div id="profileName" style="font-weight:600">Nama Pengguna</div>
-            <div id="profileEmail" style="font-size:14px; opacity:.8">email@fupa.id</div>
+            <div id="profileName" style="font-weight:600">Memuat...</div>
+            <div id="profileEmail" style="font-size:14px; opacity:.8">Memuat...</div>
           </div>
         </div>
-        <div class="row">
-          <span class="material-symbols-rounded">home</span>
-          <span id="profileAddress" style="flex:1">Alamat belum diatur</span>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <span class="material-symbols-rounded">schedule</span>
-          <span>Shift: <span id="userShift">pagi</span></span>
+        <div style="margin-top:12px">
+          <div class="row">
+            <span class="material-symbols-rounded" style="opacity:.7">schedule</span>
+            <div>
+              <div style="font-size:14px; opacity:.8">Shift</div>
+              <div id="profileShift" style="font-weight:600">Memuat...</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="material-symbols-rounded" style="opacity:.7">home</span>
+            <div>
+              <div style="font-size:14px; opacity:.8">Alamat</div>
+              <div id="profileAddress" style="font-weight:600">Memuat...</div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -181,12 +188,23 @@
     </div>
     <div class="dlg-body">
       <div class="row" style="align-items:flex-end">
-        <img id="profilePhotoDlg" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
-        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="profilePhotoInput" accept="image/*" /></div>
+        <img id="editPhoto" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
+        <div class="input"><span class="material-symbols-rounded">photo</span><input type="file" id="photoFile" accept="image/*" /></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="profileNameInput" placeholder="Nama lengkap" /></div>
-        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="profileAddressInput" placeholder="Alamat" /></div>
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">badge</span><input id="editName" placeholder="Nama lengkap" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="input" style="flex:1"><span class="material-symbols-rounded">home</span><input id="editAddress" placeholder="Alamat" /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="input" style="flex:1">
+          <span class="material-symbols-rounded">schedule</span>
+          <select id="editShift">
+            <option value="pagi">Shift Pagi</option>
+            <option value="sore">Shift Sore</option>
+          </select>
+        </div>
       </div>
       <div class="row" style="justify-content:space-between; margin-top:12px">
         <button id="saveProfileBtn" class="btn"><span class="material-symbols-rounded">save</span> Simpan</button>
