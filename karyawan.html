@@ -122,8 +122,11 @@
           <span class="chip"><span class="material-symbols-rounded">pin_drop</span><span id="locText">-6.2088, 106.8456</span></span>
         </div>
         <div style="margin-top:10px">
-          <video id="cameraPreview" autoplay playsinline style="display:block; width:100%; height:300px; border-radius:12px; background:#000;"></video>
-          <img id="photoPreview" style="display:none; width:100%; height:300px; border-radius:12px; background:#000; object-fit:cover" />
+          <video id="video" autoplay playsinline style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></video>
+          <canvas id="canvas" style="display:none; width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover"></canvas>
+          <div id="cameraPlaceholder" class="camera-placeholder">
+            <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+          </div>
         </div>
         <div class="camera-controls">
           <div class="input">
@@ -150,7 +153,6 @@
     </div>
   </div>
 
-  <!-- Dialog profil -->
   <dialog id="profileDlg">
     <div class="dlg-head">
       <div class="row"><span class="material-symbols-rounded">account_circle</span><b>Profil</b></div>
@@ -168,7 +170,7 @@
       <div class="row" style="margin-top:10px">
         <div class="input" style="flex:1">
           <span class="material-symbols-rounded">schedule</span>
-          <select id="shiftSelect">
+          <select id="shift">
             <option value="pagi">Shift Pagi</option>
             <option value="sore">Shift Sore</option>
           </select>
@@ -186,7 +188,363 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-  <script src="app.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      authDomain: "fupa-snack.firebaseapp.com",
+      projectId: "fupa-snack",
+      storageBucket: "fupa-snack.firebasestorage.app",
+      messagingSenderId: "972524876738",
+      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const cloudName = 'da7idhh4f';
+    const uploadPreset = 'FupaSnack';
+
+    const $ = (sel) => document.querySelector(sel);
+    const toast = (msg, type = 'info') => {
+      const t = $("#toast");
+      if (!t) return alert(msg);
+      
+      const colors = {
+        success: '#2e7d32',
+        error: '#c62828',
+        warning: '#f9a825',
+        info: '#111'
+      };
+      
+      t.style.backgroundColor = colors[type] || colors.info;
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 3000);
+    };
+
+    let currentUser = null;
+    let userData = null;
+    let stream = null;
+    let currentLocation = null;
+    let capturedImage = null;
+
+    function updateServerTime() {
+      const now = new Date();
+      const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      };
+      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
+    }
+    
+    function updatePresenceStatus() {
+      const now = new Date();
+      const hour = now.getHours();
+      const minutes = now.getMinutes();
+      const day = now.getDay();
+
+      if (day === 0) {
+        $('#statusText').textContent = 'Libur';
+        $('#statusChip').className = 'status s-bad';
+        $('#statusChip').innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">Libur</span>';
+        return;
+      }
+
+      const shift = userData ? userData.shift : 'pagi';
+      let status = 'Di Luar Sesi Presensi';
+      let statusClass = 's-bad';
+
+      if (shift === 'pagi') {
+        if (hour === 5 && minutes >= 30 || hour === 6 && minutes < 20) {
+          status = hour === 6 && minutes >= 0 && minutes < 20 ? 'Terlambat' : 'Tepat Waktu';
+          statusClass = hour === 6 ? 's-warn' : 's-good';
+        }
+        else if (hour === 10 && minutes >= 0 || hour === 11 && minutes < 20) {
+          status = hour === 11 && minutes >= 0 && minutes < 20 ? 'Terlambat' : 'Tepat Waktu';
+          statusClass = hour === 11 ? 's-warn' : 's-good';
+        }
+      } else if (shift === 'sore') {
+        if (hour === 14 && minutes >= 0 && minutes < 50) {
+          status = minutes >= 30 ? 'Terlambat' : 'Tepat Waktu';
+          statusClass = minutes >= 30 ? 's-warn' : 's-good';
+        }
+        else if (hour === 17 && minutes >= 30 || hour === 18 && minutes < 50) {
+          status = hour === 18 && minutes >= 0 && minutes < 50 ? 'Terlambat' : 'Tepat Waktu';
+          statusClass = hour === 18 ? 's-warn' : 's-good';
+        }
+      }
+
+      $('#statusText').textContent = status;
+      $('#statusChip').className = `status ${statusClass}`;
+      $('#statusChip').innerHTML = `<span class="material-symbols-rounded">${statusClass === 's-good' ? 'check_circle' : statusClass === 's-warn' ? 'warning' : 'schedule'}</span><span id="statusText">${status}</span>`;
+    }
+
+    function getLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            currentLocation = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            $('#locText').textContent = `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`;
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            toast('Tidak dapat mendapatkan lokasi', 'error');
+          }
+        );
+      } else {
+        toast('Geolocation tidak didukung', 'error');
+      }
+    }
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const video = $('#video');
+        video.srcObject = stream;
+        video.style.display = 'block';
+        $('#cameraPlaceholder').style.display = 'none';
+      } catch (err) {
+        console.error('Error accessing camera:', err);
+        toast('Tidak dapat mengakses kamera', 'error');
+      }
+    }
+
+    function takePicture() {
+      const video = $('#video');
+      const canvas = $('#canvas');
+      const context = canvas.getContext('2d');
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      stream.getTracks().forEach(track => track.stop());
+      video.style.display = 'none';
+      canvas.style.display = 'block';
+      $('#cameraPlaceholder').style.display = 'none';
+
+      capturedImage = canvas.toDataURL('image/jpeg');
+      $('#uploadBtn').disabled = false;
+    }
+
+    function compressImage(dataUrl, maxSize = 50000) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = dataUrl;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          let width = img.width;
+          let height = img.height;
+          let quality = 0.9;
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          let compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+          while (compressedDataUrl.length > maxSize && quality > 0.1) {
+            quality -= 0.1;
+            compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          resolve(compressedDataUrl);
+        };
+      });
+    }
+
+    async function uploadToCloudinary(dataUrl) {
+      const formData = new FormData();
+      formData.append('file', dataUrl);
+      formData.append('upload_preset', uploadPreset);
+
+      try {
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        return data.secure_url;
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        throw error;
+      }
+    }
+
+    async function uploadPresence() {
+      if (!capturedImage) {
+        toast('Ambil foto terlebih dahulu', 'error');
+        return;
+      }
+
+      if (!currentLocation) {
+        toast('Mendapatkan lokasi...', 'info');
+        await getLocation();
+        if (!currentLocation) {
+          toast('Lokasi tidak tersedia', 'error');
+          return;
+        }
+      }
+
+      const jenis = $('#jenis').value;
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const time = now.toTimeString().split(' ')[0];
+
+      const presencesRef = db.collection('presences');
+      const query = presencesRef.where('userId', '==', currentUser.uid)
+                                .where('tanggal', '==', today)
+                                .where('jenis', '==', jenis);
+
+      const snapshot = await query.get();
+      if (!snapshot.empty) {
+        toast('Anda sudah presensi ' + jenis + ' hari ini', 'error');
+        return;
+      }
+
+      let status = 'Tepat Waktu';
+      const shift = userData.shift;
+      const hour = now.getHours();
+      const minutes = now.getMinutes();
+
+      if (jenis === 'izin') {
+        status = 'Izin';
+      } else {
+        if (shift === 'pagi') {
+          if (jenis === 'berangkat') {
+            if (hour > 6 || (hour === 6 && minutes > 0)) {
+              status = 'Terlambat';
+            }
+          } else if (jenis === 'pulang') {
+            if (hour > 11 || (hour === 11 && minutes > 0)) {
+              status = 'Terlambat';
+            }
+          }
+        } else if (shift === 'sore') {
+          if (jenis === 'berangkat') {
+            if (hour > 14 || (hour === 14 && minutes > 30)) {
+              status = 'Terlambat';
+            }
+          } else if (jenis === 'pulang') {
+            if (hour > 18 || (hour === 18 && minutes > 30)) {
+              status = 'Terlambat';
+            }
+          }
+        }
+      }
+
+      $('#uploadBtn').disabled = true;
+      $('#uploadBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+
+      try {
+        const compressedImage = await compressImage(capturedImage, 50000);
+        const imageUrl = await uploadToCloudinary(compressedImage);
+
+        await presencesRef.add({
+          userId: currentUser.uid,
+          nama: userData.nama,
+          tanggal: today,
+          waktu: time,
+          shift: userData.shift,
+          jenis: jenis,
+          status: status,
+          koordinat: new firebase.firestore.GeoPoint(currentLocation.latitude, currentLocation.longitude),
+          foto: imageUrl,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        toast('Presensi berhasil dicatat', 'success');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+
+        $('#canvas').style.display = 'none';
+        $('#cameraPlaceholder').style.display = 'flex';
+        capturedImage = null;
+        startCamera();
+      } catch (error) {
+        console.error('Error uploading presence:', error);
+        toast('Gagal mengupload presensi', 'error');
+        $('#uploadBtn').disabled = false;
+        $('#uploadBtn').innerHTML = '<span class="material-symbols-rounded">cloud_upload</span> Upload';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async function() {
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          const userDoc = await db.collection('users').doc(user.uid).get();
+          if (userDoc.exists) {
+            userData = userDoc.data();
+            $('#nama').value = userData.nama || '';
+            $('#alamat').value = userData.alamat || '';
+            $('#shift').value = userData.shift || 'pagi';
+          } else {
+            userData = {
+              nama: user.email.split('@')[0],
+              alamat: '',
+              shift: 'pagi'
+            };
+            await db.collection('users').doc(user.uid).set(userData);
+            $('#nama').value = userData.nama;
+            $('#alamat').value = userData.alamat;
+            $('#shift').value = userData.shift;
+          }
+
+          updateServerTime();
+          setInterval(updateServerTime, 1000);
+          
+          updatePresenceStatus();
+          setInterval(updatePresenceStatus, 60000);
+          
+          getLocation();
+          
+          startCamera();
+        } else {
+          window.location.href = 'index.html';
+        }
+      });
+
+      $('#snapBtn').addEventListener('click', takePicture);
+      
+      $('#uploadBtn').addEventListener('click', uploadPresence);
+      
+      $('#profileBtn').addEventListener('click', () => {
+        $('#profileDlg').showModal();
+      });
+      
+      $('#saveProfileBtn').addEventListener('click', async () => {
+        const nama = $('#nama').value;
+        const alamat = $('#alamat').value;
+        const shift = $('#shift').value;
+
+        try {
+          await db.collection('users').doc(currentUser.uid).update({
+            nama, alamat, shift
+          });
+          userData = { ...userData, nama, alamat, shift };
+          toast('Profil berhasil disimpan', 'success');
+          $('#profileDlg').close();
+        } catch (error) {
+          toast('Gagal menyimpan profil', 'error');
+        }
+      });
+      
+      $('#logoutBtn').addEventListener('click', () => {
+        auth.signOut();
+        toast('Berhasil keluar', 'success');
+      });
+    });
+  </script>
 </body>
 </html>
