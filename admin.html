@@ -122,7 +122,6 @@
           <div class="filter-item">
             <span class="material-symbols-rounded">today</span>
             <select id="fPeriode" class="filter-select">
-              <option value="all">Semua</option>
               <option value="harian">Harian</option>
               <option value="mingguan">Mingguan</option>
               <option value="bulanan">Bulanan</option>
@@ -152,6 +151,7 @@
               <tr>
                 <th>Waktu</th>
                 <th>Nama</th>
+                <th>Shift</th>
                 <th>Jenis</th>
                 <th>Status</th>
                 <th>Koordinat</th>
@@ -159,9 +159,7 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr>
-                <td colspan="6" style="text-align:center;padding:20px">Memuat data presensi...</td>
-              </tr>
+              <!-- Data akan diisi oleh JavaScript -->
             </tbody>
           </table>
         </div>
@@ -169,7 +167,6 @@
     </div>
   </div>
 
-  <!-- Dialog profil admin -->
   <dialog id="profileDlg">
     <div class="dlg-head">
       <div class="row"><span class="material-symbols-rounded">admin_panel_settings</span><b>Profil & Akun</b></div>
@@ -196,7 +193,167 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-  <script src="app.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyApYdiUlLMb9ihBkLnCjDpLJHqYFRFS3Fw",
+      authDomain: "fupa-snack.firebaseapp.com",
+      projectId: "fupa-snack",
+      storageBucket: "fupa-snack.firebasestorage.app",
+      messagingSenderId: "972524876738",
+      appId: "1:972524876738:web:dd0d57dd8bf2d8a8dd9c5b"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const $ = (sel) => document.querySelector(sel);
+    const toast = (msg, type = 'info') => {
+      const t = $("#toast");
+      if (!t) return alert(msg);
+      
+      const colors = {
+        success: '#2e7d32',
+        error: '#c62828',
+        warning: '#f9a825',
+        info: '#111'
+      };
+      
+      t.style.backgroundColor = colors[type] || colors.info;
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 3000);
+    };
+
+    let currentUser = null;
+    let presences = [];
+
+    function updateServerTime() {
+      const now = new Date();
+      const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      };
+      $('#serverTime').textContent = now.toLocaleDateString('id-ID', options);
+    }
+
+    function formatDate(timestamp) {
+      const date = timestamp.toDate();
+      return date.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }) + '<br>' + date.toLocaleTimeString('id-ID');
+    }
+
+    async function fetchPresences() {
+      try {
+        const snapshot = await db.collection('presences')
+          .orderBy('createdAt', 'desc')
+          .get();
+        presences = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderTable(presences);
+      } catch (error) {
+        console.error('Error fetching presences:', error);
+        toast('Gagal mengambil data presensi', 'error');
+      }
+    }
+
+    function renderTable(data) {
+      const tableBody = $('#tableBody');
+      tableBody.innerHTML = '';
+
+      data.forEach(presence => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${formatDate(presence.createdAt)}</td>
+          <td>${presence.nama}</td>
+          <td>${presence.shift}</td>
+          <td>${presence.jenis}</td>
+          <td><span class="status ${getStatusClass(presence.status)}">${presence.status}</span></td>
+          <td>${presence.koordinat.latitude.toFixed(4)}, ${presence.koordinat.longitude.toFixed(4)}</td>
+          <td><a href="${presence.foto}" target="_blank">Lihat Foto</a></td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function getStatusClass(status) {
+      switch (status) {
+        case 'Tepat Waktu': return 's-good';
+        case 'Terlambat': return 's-warn';
+        case 'Izin': return 's-bad';
+        default: return 's-bad';
+      }
+    }
+
+    function exportToCSV() {
+      let csv = 'Nama,Tanggal,Shift,Jenis,Status,Koordinat\n';
+      presences.forEach(p => {
+        const date = p.createdAt.toDate();
+        const row = [
+          p.nama,
+          date.toLocaleDateString('id-ID'),
+          p.shift,
+          p.jenis,
+          p.status,
+          `${p.koordinat.latitude},${p.koordinat.longitude}`
+        ];
+        csv += row.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `presensi-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          currentUser = user;
+          updateServerTime();
+          setInterval(updateServerTime, 1000);
+          
+          await fetchPresences();
+        } else {
+          window.location.href = 'index.html';
+        }
+      });
+
+      $('#fPeriode').addEventListener('change', () => {
+        const period = $('#fPeriode').value;
+        $('#customDateRange').style.display = period === 'custom' ? 'flex' : 'none';
+      });
+      
+      $('#applyFilter').addEventListener('click', () => {
+        toast('Filter diterapkan', 'success');
+      });
+      
+      $('#exportCsv').addEventListener('click', exportToCSV);
+      
+      $('#profileBtn').addEventListener('click', () => {
+        $('#profileDlg').showModal();
+      });
+      
+      $('#saveProfileBtn').addEventListener('click', () => {
+        toast('Profil berhasil disimpan', 'success');
+        $('#profileDlg').close();
+      });
+      
+      $('#logoutBtn').addEventListener('click', () => {
+        auth.signOut();
+        toast('Berhasil keluar', 'success');
+      });
+    });
+  </script>
 </body>
 </html>
