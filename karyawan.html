@@ -114,6 +114,25 @@
       cursor: pointer;
       z-index: 2;
     }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
   </style>
 </head>
 <body>
@@ -122,7 +141,9 @@
       <span class="material-symbols-rounded" style="color:#FF8F00">workspace_premium</span>
       <div>
         <div style="font-weight:800">Presensi Karyawan</div>
-        <div id="serverTime" style="font-size:12px; opacity:.8">Memuat waktu...</div>
+        <div id="serverTime" style="font-size:12px; opacity:.8">
+          <span class="skeleton" style="width: 150px; height: 14px; display: inline-block;"></span>
+        </div>
       </div>
     </div>
     <div class="icons">
@@ -139,17 +160,22 @@
         <div class="row" style="justify-content:space-between">
           <span id="statusChip" class="status s-good">
             <span class="material-symbols-rounded">check_circle</span>
-            <span id="statusText">Memuat status...</span>
+            <span id="statusText">
+              <span class="skeleton" style="width: 120px; height: 16px; display: inline-block;"></span>
+            </span>
           </span>
           <span class="chip">
             <span class="material-symbols-rounded">pin_drop</span>
-            <span id="locText">Mengambil lokasi...</span>
+            <span id="locText">
+              <span class="skeleton" style="width: 100px; height: 14px; display: inline-block;"></span>
+            </span>
           </span>
         </div>
         <div style="margin-top:10px">
           <div id="cameraContainer">
             <div class="camera-placeholder">
               <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+              <div>Menyiapkan kamera...</div>
             </div>
             <button id="switchCamera" style="display:none">
               <span class="material-symbols-rounded">switch_video</span>
@@ -166,11 +192,13 @@
             </select>
           </div>
           <div class="row">
-            <button id="snapBtn" class="btn">
-              <span class="material-symbols-rounded">photo_camera</span> Ambil selfie
+            <button id="snapBtn" class="btn" disabled>
+              <span class="material-symbols-rounded">photo_camera</span> 
+              <span id="snapText">Menyiapkan...</span>
             </button>
             <button id="uploadBtn" class="btn" disabled>
-              <span class="material-symbols-rounded">cloud_upload</span> Upload
+              <span class="material-symbols-rounded">cloud_upload</span> 
+              <span id="uploadText">Upload</span>
             </button>
           </div>
         </div>
@@ -267,6 +295,7 @@
     let capturedPhoto = null;
     let currentLocation = null;
     let usingFrontCamera = true;
+    let isInitialized = false;
 
     // Util UI
     const $ = (sel) => document.querySelector(sel);
@@ -286,6 +315,20 @@
       t.style.display = "block";
       setTimeout(() => { t.style.display = "none"; }, 3000);
     };
+
+    // Fungsi untuk menampilkan loading state
+    function showLoadingState() {
+      $('#serverTime').innerHTML = '<span class="skeleton" style="width: 150px; height: 14px; display: inline-block;"></span>';
+      $('#statusText').innerHTML = '<span class="skeleton" style="width: 120px; height: 16px; display: inline-block;"></span>';
+      $('#locText').innerHTML = '<span class="skeleton" style="width: 100px; height: 14px; display: inline-block;"></span>';
+      $('#snapBtn').disabled = true;
+      $('#snapText').textContent = 'Menyiapkan...';
+    }
+
+    // Fungsi untuk menyembunyikan loading state
+    function hideLoadingState() {
+      // Loading state akan diganti dengan data real di fungsi lainnya
+    }
 
     // Fungsi kompresi gambar menjadi 50kb
     function compressImage(blob, maxSizeKB = 50) {
@@ -347,6 +390,10 @@
         body: formData
       });
       
+      if (!response.ok) {
+        throw new Error(`Cloudinary upload failed: ${response.status}`);
+      }
+      
       const data = await response.json();
       return data.secure_url;
     }
@@ -359,8 +406,14 @@
           return;
         }
         
+        // Set timeout untuk location request
+        const locationTimeout = setTimeout(() => {
+          reject(new Error('Timeout mengambil lokasi'));
+        }, 10000);
+        
         navigator.geolocation.getCurrentPosition(
           (position) => {
+            clearTimeout(locationTimeout);
             const coords = {
               lat: position.coords.latitude,
               lng: position.coords.longitude
@@ -370,8 +423,21 @@
             resolve(coords);
           },
           (error) => {
+            clearTimeout(locationTimeout);
             console.error('Error getting location:', error);
-            $('#locText').textContent = 'Lokasi gagal diambil';
+            let errorMsg = 'Lokasi gagal diambil';
+            switch(error.code) {
+              case error.PERMISSION_DENIED:
+                errorMsg = 'Izin lokasi ditolak';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                errorMsg = 'Lokasi tidak tersedia';
+                break;
+              case error.TIMEOUT:
+                errorMsg = 'Timeout mengambil lokasi';
+                break;
+            }
+            $('#locText').textContent = errorMsg;
             reject(error);
           },
           { 
@@ -383,7 +449,7 @@
       });
     }
 
-    // Akses kamera
+    // Akses kamera dengan error handling yang lebih baik
     async function startCamera() {
       try {
         // Hentikan kamera sebelumnya jika ada
@@ -416,9 +482,25 @@
         cameraContainer.appendChild(video);
         $('#switchCamera').style.display = 'flex';
         
+        // Aktifkan tombol ambil foto
+        $('#snapBtn').disabled = false;
+        $('#snapText').textContent = 'Ambil selfie';
+        
         // Tunggu video siap
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve();
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Kamera timeout'));
+          }, 5000);
+          
+          video.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            resolve();
+          };
+          
+          video.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Error loading camera'));
+          };
         });
         
         return video;
@@ -426,44 +508,56 @@
         console.error('Error accessing camera:', error);
         $('#cameraContainer').innerHTML = `
           <div class="camera-placeholder">
-            <span class="material-symbols-rounded" style="font-size:48px">no_photography</span>
-            <div>Kamera tidak dapat diakses</div>
+            <span class="material-symbols-rounded" style="font-size:48px; color: #ff6b6b;">no_photography</span>
+            <div style="color: #ff6b6b; margin-top: 10px;">Kamera tidak dapat diakses</div>
+            <div style="font-size: 12px; margin-top: 5px;">${error.message}</div>
           </div>
         `;
         $('#switchCamera').style.display = 'none';
-        toast('Tidak dapat mengakses kamera', 'error');
+        $('#snapBtn').disabled = true;
+        $('#snapText').textContent = 'Kamera error';
+        toast('Tidak dapat mengakses kamera: ' + error.message, 'error');
         return null;
       }
     }
 
     // Ambil foto dari kamera
     async function takePicture(video) {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      return new Promise((resolve) => {
-        canvas.toBlob((blob) => {
-          capturedPhoto = blob;
-          
-          // Tampilkan preview foto
-          const img = document.createElement('img');
-          img.src = URL.createObjectURL(blob);
-          img.style.width = '100%';
-          img.style.height = '300px';
-          img.style.objectFit = 'cover';
-          
-          const cameraContainer = $('#cameraContainer');
-          cameraContainer.innerHTML = '';
-          cameraContainer.appendChild(img);
-          $('#switchCamera').style.display = 'none';
-          
-          resolve(blob);
-        }, 'image/jpeg', 0.9);
-      });
+      try {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        return new Promise((resolve) => {
+          canvas.toBlob((blob) => {
+            capturedPhoto = blob;
+            
+            // Tampilkan preview foto
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(blob);
+            img.style.width = '100%';
+            img.style.height = '300px';
+            img.style.objectFit = 'cover';
+            
+            const cameraContainer = $('#cameraContainer');
+            cameraContainer.innerHTML = '';
+            cameraContainer.appendChild(img);
+            $('#switchCamera').style.display = 'none';
+            
+            // Aktifkan tombol upload
+            $('#uploadBtn').disabled = false;
+            
+            resolve(blob);
+          }, 'image/jpeg', 0.9);
+        });
+      } catch (error) {
+        console.error('Error taking picture:', error);
+        toast('Gagal mengambil foto: ' + error.message, 'error');
+        throw error;
+      }
     }
 
     // Tentukan status presensi
@@ -514,7 +608,12 @@
 
     // Update status presensi
     function updatePresenceStatus() {
-      if (!userData.shift) return;
+      if (!userData.shift) {
+        $('#statusText').textContent = 'Data shift belum diatur';
+        $('#statusChip').className = 'status s-bad';
+        $('#statusChip').innerHTML = '<span class="material-symbols-rounded">error</span><span id="statusText">Data shift belum diatur</span>';
+        return;
+      }
       
       const now = new Date();
       const jenis = $('#jenis').value;
@@ -534,6 +633,9 @@
       } else if (statusInfo.status.includes('Libur')) {
         statusChip.classList.add('s-bad');
         statusChip.innerHTML = '<span class="material-symbols-rounded">beach_access</span><span id="statusText">' + statusInfo.status + '</span>';
+      } else if (statusInfo.status.includes('Izin')) {
+        statusChip.classList.add('s-good');
+        statusChip.innerHTML = '<span class="material-symbols-rounded">assignment_turned_in</span><span id="statusText">' + statusInfo.status + '</span>';
       } else {
         statusChip.classList.add('s-bad');
         statusChip.innerHTML = '<span class="material-symbols-rounded">schedule</span><span id="statusText">' + statusInfo.status + '</span>';
@@ -544,8 +646,13 @@
 
     // Upload presensi
     async function uploadPresence() {
-      if (!capturedPhoto || !currentLocation) {
-        toast('Ambil foto dan pastikan lokasi tersedia', 'error');
+      if (!capturedPhoto) {
+        toast('Ambil foto terlebih dahulu', 'error');
+        return;
+      }
+      
+      if (!currentLocation) {
+        toast('Lokasi tidak tersedia', 'error');
         return;
       }
       
@@ -576,7 +683,8 @@
           koordinat: new firebase.firestore.GeoPoint(currentLocation.lat, currentLocation.lng),
           fotoURL: photoURL,
           shift: userData.shift,
-          nama: userData.nama || currentUser.email
+          nama: userData.nama || currentUser.email,
+          createdAt: serverTime
         });
         
         toast('Presensi berhasil dicatat!', 'success');
@@ -597,29 +705,65 @@
       }
     }
 
-    // Load data user
+    // Load data user dengan error handling
     async function loadUserData() {
       try {
+        console.log('Loading user data for:', currentUser.uid);
+        
         const userDoc = await db.collection('users').doc(currentUser.uid).get();
+        
         if (userDoc.exists) {
           userData = userDoc.data();
+          console.log('User data loaded:', userData);
           
+          // Update form fields
           if (userData.nama) $('#nama').value = userData.nama;
           if (userData.alamat) $('#alamat').value = userData.alamat;
           if (userData.shift) $('#shift').value = userData.shift;
-          if (userData.fotoURL) $('#pfp').src = userData.fotoURL;
+          if (userData.fotoURL) {
+            $('#pfp').src = userData.fotoURL;
+            $('#pfp').onerror = function() {
+              this.src = 'https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(userData.nama || currentUser.email) + '&backgroundColor=ffb300,ffd54f&radius=20';
+            };
+          }
+          
+          // Update status berdasarkan data user
+          updatePresenceStatus();
+          
+        } else {
+          console.log('User document not found, creating new one');
+          // Buat dokumen user baru jika tidak ada
+          await db.collection('users').doc(currentUser.uid).set({
+            email: currentUser.email,
+            nama: currentUser.email.split('@')[0],
+            alamat: '',
+            shift: 'pagi',
+            role: 'karyawan',
+            fotoURL: '',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          
+          // Load ulang data
+          await loadUserData();
         }
       } catch (error) {
         console.error('Error loading user data:', error);
+        toast('Gagal memuat data profil: ' + error.message, 'error');
       }
     }
 
     // Save data user
     async function saveUserData() {
       try {
-        const nama = $('#nama').value;
-        const alamat = $('#alamat').value;
+        const nama = $('#nama').value.trim();
+        const alamat = $('#alamat').value.trim();
         const shift = $('#shift').value;
+        
+        if (!nama) {
+          toast('Nama tidak boleh kosong', 'error');
+          return;
+        }
         
         await db.collection('users').doc(currentUser.uid).update({
           nama: nama,
@@ -634,9 +778,10 @@
         
         toast('Profil berhasil disimpan', 'success');
         updatePresenceStatus();
+        $('#profileDlg').close();
       } catch (error) {
         console.error('Error saving user data:', error);
-        toast('Gagal menyimpan profil', 'error');
+        toast('Gagal menyimpan profil: ' + error.message, 'error');
       }
     }
 
@@ -657,37 +802,81 @@
     }
 
     // Inisialisasi aplikasi
-    document.addEventListener('DOMContentLoaded', async function() {
+    async function initializeApp() {
+      if (isInitialized) return;
+      
+      try {
+        showLoadingState();
+        
+        await loadUserData();
+        
+        // Ambil lokasi
+        try {
+          await getCurrentLocation();
+        } catch (error) {
+          console.warn('Location error:', error);
+          // Lanjutkan tanpa lokasi
+        }
+        
+        // Start kamera
+        await startCamera();
+        
+        // Update waktu
+        updateServerTime();
+        setInterval(updateServerTime, 1000);
+        
+        // Update status presensi
+        updatePresenceStatus();
+        setInterval(updatePresenceStatus, 30000); // Update setiap 30 detik
+        
+        isInitialized = true;
+        console.log('App initialized successfully');
+        
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        toast('Gagal memuat aplikasi: ' + error.message, 'error');
+      }
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
       // Cek auth state
       auth.onAuthStateChanged(async (user) => {
         if (user) {
           currentUser = user;
+          console.log('User logged in:', user.email);
           
           // Verifikasi role
-          const userDoc = await db.collection('users').doc(user.uid).get();
-          if (!userDoc.exists || userDoc.data().role !== 'karyawan') {
-            toast('Akses ditolak. Halaman ini hanya untuk karyawan.', 'error');
-            setTimeout(() => window.location.href = 'index.html', 2000);
-            return;
+          try {
+            const userDoc = await db.collection('users').doc(user.uid).get();
+            const userRole = userDoc.exists ? userDoc.data().role : 'karyawan';
+            
+            if (userRole !== 'karyawan') {
+              toast('Akses ditolak. Halaman ini hanya untuk karyawan.', 'error');
+              setTimeout(() => window.location.href = 'index.html', 2000);
+              return;
+            }
+            
+            await initializeApp();
+            
+          } catch (error) {
+            console.error('Error verifying role:', error);
+            toast('Error memverifikasi akses', 'error');
           }
-          
-          await loadUserData();
-          await getCurrentLocation();
-          await startCamera();
-          updateServerTime();
-          setInterval(updateServerTime, 1000);
-          setInterval(updatePresenceStatus, 1000);
         } else {
+          console.log('No user, redirecting to login');
           window.location.href = 'index.html';
         }
       });
       
-      // Event listeners
+      // Event listeners untuk UI
       $('#snapBtn').addEventListener('click', async () => {
         if (currentStream) {
           const video = $('#cameraContainer video');
-          await takePicture(video);
-          updatePresenceStatus();
+          if (video) {
+            await takePicture(video);
+            updatePresenceStatus();
+          }
         }
       });
       
@@ -702,6 +891,9 @@
       $('#saveProfileBtn').addEventListener('click', saveUserData);
       
       $('#logoutBtn').addEventListener('click', () => {
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
         auth.signOut();
       });
       
@@ -715,19 +907,29 @@
         const file = e.target.files[0];
         if (file) {
           try {
+            $('#saveProfileBtn').disabled = true;
+            $('#saveProfileBtn').innerHTML = '<span class="spinner"></span> Mengupload...';
+            
             const compressedBlob = await compressImage(file);
             const photoURL = await uploadToCloudinary(compressedBlob);
             
             await db.collection('users').doc(currentUser.uid).update({
-              fotoURL: photoURL
+              fotoURL: photoURL,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
             
             userData.fotoURL = photoURL;
             $('#pfp').src = photoURL;
+            
+            $('#saveProfileBtn').disabled = false;
+            $('#saveProfileBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan';
+            
             toast('Foto profil berhasil diupdate', 'success');
           } catch (error) {
             console.error('Error updating profile picture:', error);
-            toast('Gagal mengupdate foto profil', 'error');
+            $('#saveProfileBtn').disabled = false;
+            $('#saveProfileBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Simpan';
+            toast('Gagal mengupdate foto profil: ' + error.message, 'error');
           }
         }
       });
