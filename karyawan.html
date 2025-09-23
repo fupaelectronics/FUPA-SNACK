@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Presensi FUPA — Karyawan</title>
   <meta name="theme-color" content="#FFB300" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FUPA Presensi">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:FILL,GRAD@1,200" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <style>
@@ -35,14 +38,16 @@
       box-shadow:var(--soft-shadow); display:inline-flex; align-items:center; gap:8px;
     }
     .container{padding:16px}
+    .grid{display:grid; grid-template-columns:1fr; gap:16px}
+    @media(min-width:900px){ .grid{grid-template-columns:1.1fr .9fr} }
     .card{
       background:var(--card); border-radius:16px; padding:16px; box-shadow:var(--soft-shadow);
-      backdrop-filter: blur(8px); margin-bottom:16px;
+      backdrop-filter: blur(8px);
     }
     .btn{
       display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, #FFB300, #FF8F00);
-      color:#fff; border:none; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer;
-      box-shadow:0 10px 20px rgba(255,143,0,.25); transition: all 0.3s ease; font-size:14px;
+      color:#fff; border:none; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
+      box-shadow:0 10px 20px rgba(255,143,0,.25); transition: all 0.3s ease;
     }
     .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 30px rgba(255,143,0,.4); }
     .btn:disabled {
@@ -50,39 +55,39 @@
       cursor: not-allowed;
       transform: none !important;
     }
-    .status{font-weight:800; padding:8px 12px; border-radius:12px; color:#fff; display:inline-flex; align-items:center; gap:6px; font-size:14px;}
+    .status{font-weight:800; padding:6px 10px; border-radius:12px; color:#fff; display:inline-flex; align-items:center; gap:6px}
     .s-good{background:var(--good)}
     .s-warn{background:var(--warn)}
     .s-bad{background:var(--bad)}
-    video, canvas, img{width:100%; border-radius:12px; background:#000; height:300px; object-fit:cover}
+    video, canvas, img{width:100%; border-radius:12px; background:#000; max-height:300px; object-fit:cover}
     dialog{
       border:none; border-radius:16px; width:min(520px,90vw); padding:0; box-shadow:var(--soft-shadow);
-      animation:pop .2s ease; overflow:hidden; background: white; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
+      animation:pop .2s ease; overflow:hidden; background: white;
     }
-    @keyframes pop{ from{transform:translate(-50%, -50%) scale(0.9); opacity:0} to{transform:translate(-50%, -50%) scale(1); opacity:1} }
-    .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:16px; background:#fff; border-bottom:1px solid #eee;}
-    .dlg-body{padding:16px; background:#fff}
-    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px;}
-    .input{display:flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(0,0,0,.1); border-radius:12px; padding:12px; width:100%;}
-    .input input, .input select{border:none; outline:none; background:transparent; font-size:14px; width:100%; font-family:inherit;}
+    @keyframes pop{ from{transform:translateY(10px); opacity:.5} to{transform:translateY(0); opacity:1} }
+    .dlg-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff; border-bottom: 1px solid #eee;}
+    .dlg-body{padding:14px; background:#fff}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .input{display:flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:12px; padding:8px 10px}
+    .input input, .input select{border:none; outline:none; background:transparent; font-size:14px; width:100%}
     .toast{ 
-      position:fixed; left:50%; bottom:24px; transform:translateX(-50%); 
-      color:#fff; padding:12px 20px; border-radius:12px; 
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%); 
+      color:#fff; padding:12px 16px; border-radius:12px; 
       box-shadow:var(--soft-shadow); z-index:1000; display:none; 
-      font-weight:600; max-width:90vw; text-align:center;
+      font-weight: 600;
     }
-    .camera-container {
+    .camera-placeholder {
       width: 100%;
       height: 300px;
-      border-radius: 12px;
-      overflow: hidden;
-      position: relative;
       background: #1a1a1a;
+      border-radius: 12px;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       color: white;
-      margin-bottom:16px;
+      font-size: 16px;
+      gap: 10px;
     }
     .spinner {
       display: inline-block;
@@ -92,15 +97,21 @@
       border-radius: 50%;
       border-top-color: #fff;
       animation: spin 1s ease-in-out infinite;
-      margin-right:8px;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    #cameraContainer {
+      position: relative;
+      width: 100%;
+      height: 300px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
     #switchCamera {
       position: absolute;
-      bottom: 12px;
-      right: 12px;
+      bottom: 10px;
+      right: 10px;
       background: rgba(0,0,0,0.7);
       color: white;
       border: none;
@@ -114,17 +125,43 @@
       z-index: 2;
       backdrop-filter: blur(10px);
     }
-    .hint {
-      font-size: 12px;
-      opacity: 0.8;
-      margin-top: 12px;
-      line-height: 1.5;
-      background: rgba(255,255,255,0.5);
-      padding: 12px;
-      border-radius: 8px;
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: loading 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
     }
     .material-symbols-rounded { 
       font-variation-settings: 'FILL' 1, 'GRAD' 200, 'opsz' 24;
+    }
+    .hint {
+      font-size: 12px;
+      opacity: 0.8;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    #cameraContainer video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #cameraContainer img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
   </style>
 </head>
@@ -145,103 +182,111 @@
   </header>
 
   <div class="container">
-    <div class="card">
-      <h3 style="margin:0 0 12px">Ambil Presensi</h3>
-      
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap;">
-        <span id="statusChip" class="status s-good">
-          <span class="material-symbols-rounded">check_circle</span>
-          <span id="statusText">Memuat status...</span>
-        </span>
-        <span class="chip">
-          <span class="material-symbols-rounded">pin_drop</span>
-          <span id="locText">Mengambil lokasi...</span>
-        </span>
-      </div>
-      
-      <div class="camera-container" id="cameraContainer">
-        <div style="text-align:center;">
-          <span class="material-symbols-rounded" style="font-size:48px; margin-bottom:8px;">photo_camera</span>
-          <div>Menyiapkan kamera...</div>
+    <div class="grid">
+      <section class="card">
+        <h3 style="margin:0 0 8px">Ambil presensi</h3>
+        <div class="row" style="justify-content:space-between; margin-bottom: 16px;">
+          <span id="statusChip" class="status s-good">
+            <span class="material-symbols-rounded">check_circle</span>
+            <span id="statusText">Memuat status...</span>
+          </span>
+          <span class="chip">
+            <span class="material-symbols-rounded">pin_drop</span>
+            <span id="locText">Mengambil lokasi...</span>
+          </span>
         </div>
-      </div>
-      
-      <button id="switchCamera" style="display:none">
-        <span class="material-symbols-rounded">switch_video</span>
-      </button>
+        
+        <div id="cameraContainer">
+          <div class="camera-placeholder">
+            <span class="material-symbols-rounded" style="font-size:48px">photo_camera</span>
+            <div>Menyiapkan kamera...</div>
+          </div>
+        </div>
+        <button id="switchCamera" style="display:none">
+          <span class="material-symbols-rounded">switch_video</span>
+        </button>
 
-      <div class="input" style="margin-bottom:12px;">
-        <span class="material-symbols-rounded">assignment</span>
-        <select id="jenis">
-          <option value="berangkat">Berangkat</option>
-          <option value="pulang">Pulang</option>
-          <option value="izin">Izin</option>
-        </select>
-      </div>
-      
-      <div style="display:flex; gap:12px; margin-bottom:16px;">
-        <button id="snapBtn" class="btn" disabled style="flex:1;">
-          <span class="material-symbols-rounded">photo_camera</span> 
-          <span id="snapText">Menyiapkan...</span>
-        </button>
-        <button id="uploadBtn" class="btn" disabled style="flex:1;">
-          <span class="material-symbols-rounded">cloud_upload</span> 
-          <span id="uploadText">Upload</span>
-        </button>
-      </div>
-      
-      <div class="hint">
-        <strong>Presensi Shift Pagi:</strong> Berangkat 05.30-06.00, Pulang 10.00-11.00<br>
-        <strong>Presensi Shift Sore:</strong> Berangkat 14.00-14.30, Pulang 17.30-18.30<br>
-        <strong>Izin:</strong> Dapat dilakukan kapan saja (00.00-23.59)
-      </div>
+        <div class="camera-controls" style="margin-top: 16px;">
+          <div class="input" style="margin-bottom: 12px;">
+            <span class="material-symbols-rounded">assignment</span>
+            <select id="jenis">
+              <option value="berangkat">Berangkat</option>
+              <option value="pulang">Pulang</option>
+              <option value="izin">Izin</option>
+            </select>
+          </div>
+          <div class="row">
+            <button id="snapBtn" class="btn" disabled>
+              <span class="material-symbols-rounded">photo_camera</span> 
+              <span id="snapText">Menyiapkan...</span>
+            </button>
+            <button id="uploadBtn" class="btn" disabled>
+              <span class="material-symbols-rounded">cloud_upload</span> 
+              <span id="uploadText">Upload</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="hint">
+          <strong>Presensi Shift Pagi:</strong> Berangkat 05.30-06.00, Pulang 10.00-11.00<br>
+          <strong>Presensi Shift Sore:</strong> Berangkat 14.00-14.30, Pulang 17.30-18.30<br>
+          <strong>Izin:</strong> Dapat dilakukan kapan saja (00.00-23.59)<br>
+          <em>Minta izin tidak berangkat wajib chat WhatsApp 081548262229 (Karomi)</em>
+        </div>
+      </section>
     </div>
   </div>
 
-  <!-- Dialog Profil -->
+  <!-- Dialog profil -->
   <dialog id="profileDlg">
     <div class="dlg-head">
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div class="row">
         <span class="material-symbols-rounded">account_circle</span>
         <b>Profil Karyawan</b>
       </div>
-      <button class="icon-btn" id="closeProfileBtn">
+      <button class="icon-btn" id="closeProfileDlg">
         <span class="material-symbols-rounded">close</span>
       </button>
     </div>
     <div class="dlg-body">
-      <div style="display:flex; align-items:end; gap:16px; margin-bottom:16px;">
-        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=ffb300,ffd54f&radius=20" 
+      <div class="row" style="align-items:flex-end; margin-bottom: 16px;">
+        <img id="pfp" src="https://api.dicebear.com/7.x/initials/svg?seed=Karyawan&backgroundColor=ffb300,ffd54f&radius=20" 
              alt="Foto profil" style="width:80px;height:80px;border-radius:16px; background:#eee" />
         <div class="input" style="flex:1;">
           <span class="material-symbols-rounded">photo_camera</span>
-          <input type="file" id="pfpFile" accept="image/*" />
+          <input type="file" id="pfpFile" accept="image/*" style="padding: 8px 0;" />
         </div>
       </div>
       
-      <div class="input" style="margin-bottom:12px;">
-        <span class="material-symbols-rounded">badge</span>
-        <input id="nama" placeholder="Nama lengkap" />
+      <div class="row" style="margin-bottom: 12px;">
+        <div class="input" style="flex:1">
+          <span class="material-symbols-rounded">badge</span>
+          <input id="nama" placeholder="Nama lengkap" />
+        </div>
       </div>
       
-      <div class="input" style="margin-bottom:12px;">
-        <span class="material-symbols-rounded">home</span>
-        <input id="alamat" placeholder="Alamat" />
+      <div class="row" style="margin-bottom: 12px;">
+        <div class="input" style="flex:1">
+          <span class="material-symbols-rounded">home</span>
+          <input id="alamat" placeholder="Alamat" />
+        </div>
       </div>
       
-      <div class="input" style="margin-bottom:20px;">
-        <span class="material-symbols-rounded">schedule</span>
-        <select id="shift">
-          <option value="pagi">Shift Pagi</option>
-          <option value="sore">Shift Sore</option>
-        </select>
+      <div class="row" style="margin-bottom: 20px;">
+        <div class="input" style="flex:1">
+          <span class="material-symbols-rounded">schedule</span>
+          <select id="shift">
+            <option value="pagi">Shift Pagi</option>
+            <option value="sore">Shift Sore</option>
+          </select>
+        </div>
       </div>
       
-      <div style="display:flex; gap:12px;">
-        <button id="saveProfileBtn" class="btn" style="flex:1;">
+      <div class="row" style="justify-content:space-between;">
+        <button id="saveProfileBtn" class="btn" style="flex:1; margin-right: 8px;">
           <span class="material-symbols-rounded">save</span> Simpan Profil
         </button>
-        <button id="logoutBtn" class="btn" style="background:#555; flex:1;">
+        <button id="logoutBtn" class="btn" style="background:#555; flex:1; margin-left: 8px;">
           <span class="material-symbols-rounded">logout</span> Keluar
         </button>
       </div>
@@ -281,6 +326,7 @@
     let currentStream = null;
     let capturedPhoto = null;
     let currentLocation = null;
+    let usingFrontCamera = true;
 
     // ==================== FUNGSI UTILITAS ====================
     function $(selector) {
@@ -361,7 +407,11 @@
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { 
+            facingMode: usingFrontCamera ? 'user' : 'environment',
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          },
           audio: false
         });
 
@@ -389,7 +439,7 @@
       } catch (error) {
         console.error('Error accessing camera:', error);
         $('#cameraContainer').innerHTML = `
-          <div style="text-align:center; color:#ff6b6b;">
+          <div class="camera-placeholder" style="color:#ff6b6b;">
             <span class="material-symbols-rounded" style="font-size:48px;">no_photography</span>
             <div>Kamera tidak dapat diakses</div>
           </div>
@@ -440,9 +490,15 @@
       }
     }
 
-    function switchCamera() {
-      // Implementasi switch camera bisa ditambahkan later
-      showToast('Fitur switch camera sedang dikembangkan', 'info');
+    async function switchCamera() {
+      try {
+        usingFrontCamera = !usingFrontCamera;
+        await startCamera();
+        showToast('Kamera diganti', 'success');
+      } catch (error) {
+        console.error('Error switching camera:', error);
+        showToast('Gagal mengganti kamera', 'error');
+      }
     }
 
     // ==================== FUNGSI LOKASI ====================
@@ -715,6 +771,37 @@
       }
     }
 
+    async function uploadProfilePicture(file) {
+      try {
+        if (!file) return;
+        
+        showLoading('#saveProfileBtn', 'Mengupload foto...');
+        
+        // Compress image
+        const compressedImage = await compressImage(file);
+        
+        // Upload to Cloudinary
+        const photoURL = await uploadToCloudinary(compressedImage);
+        
+        // Save to Firestore
+        await db.collection('users').doc(currentUser.uid).update({
+          fotoURL: photoURL
+        });
+        
+        // Update UI
+        userData.fotoURL = photoURL;
+        $('#pfp').src = photoURL;
+        
+        showToast('Foto profil berhasil diupdate', 'success');
+        
+      } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        showToast('Gagal mengupload foto profil', 'error');
+      } finally {
+        hideLoading('#saveProfileBtn', '<span class="material-symbols-rounded">save</span> Simpan Profil');
+      }
+    }
+
     // ==================== EVENT LISTENERS ====================
     function setupEventListeners() {
       console.log('Setting up event listeners...');
@@ -734,7 +821,7 @@
       });
       
       // Close profile dialog
-      $('#closeProfileBtn').addEventListener('click', () => {
+      $('#closeProfileDlg').addEventListener('click', () => {
         $('#profileDlg').close();
       });
       
@@ -753,29 +840,10 @@
       $('#switchCamera').addEventListener('click', switchCamera);
       
       // Profile picture upload
-      $('#pfpFile').addEventListener('change', async (e) => {
+      $('#pfpFile').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-          try {
-            showLoading('#saveProfileBtn', 'Mengupload foto...');
-            
-            const compressedImage = await compressImage(file);
-            const photoURL = await uploadToCloudinary(compressedImage);
-            
-            await db.collection('users').doc(currentUser.uid).update({
-              fotoURL: photoURL
-            });
-            
-            userData.fotoURL = photoURL;
-            $('#pfp').src = photoURL;
-            
-            showToast('Foto profil berhasil diupdate', 'success');
-          } catch (error) {
-            console.error('Error uploading profile picture:', error);
-            showToast('Gagal mengupload foto profil', 'error');
-          } finally {
-            hideLoading('#saveProfileBtn', '<span class="material-symbols-rounded">save</span> Simpan Profil');
-          }
+          uploadProfilePicture(file);
         }
       });
       
