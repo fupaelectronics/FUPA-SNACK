@@ -1,176 +1,184 @@
-// Fungsi untuk memuat riwayat presensi
-async function loadPresenceHistory(filters = {}) {
-  try {
-    let query = db.collection('presences').orderBy('timestamp', 'desc');
-    
-    // Terapkan filter nama
-    if (filters.nama) {
-      query = query.where('userName', '>=', filters.nama).where('userName', '<=', filters.nama + '\uf8ff');
-    }
-    
-    // Terapkan filter periode
-    if (filters.periode) {
-      const now = new Date();
-      let startDate;
+// riwayatpresensi.js - Modul untuk mengelola riwayat presensi
+
+class RiwayatPresensi {
+  constructor(db) {
+    this.db = db;
+    this.presensi = [];
+    this.filteredPresensi = [];
+    this.currentFilter = {
+      nama: '',
+      periode: 'harian',
+      show: '50',
+      dari: '',
+      sampai: ''
+    };
+  }
+
+  // Memuat data presensi dari Firestore
+  async loadPresensi() {
+    try {
+      const snapshot = await this.db.collection('presensi')
+        .orderBy('waktu', 'desc')
+        .get();
       
-      switch (filters.periode) {
-        case 'harian':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'mingguan':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-          break;
-        case 'bulanan':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-          break;
-        case 'tahunan':
-          startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-          break;
-        case 'custom':
-          if (filters.dari && filters.sampai) {
-            startDate = new Date(filters.dari);
-            const endDate = new Date(filters.sampai);
-            query = query.where('timestamp', '>=', startDate).where('timestamp', '<=', endDate);
-          }
-          break;
-      }
-      
-      if (filters.periode !== 'custom' && startDate) {
-        query = query.where('timestamp', '>=', startDate);
-      }
-    }
-    
-    const snapshot = await query.get();
-    const presences = [];
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      presences.push({
-        id: doc.id,
-        waktu: data.timestamp?.toDate() || new Date(),
-        nama: data.userName,
-        shift: data.shift,
-        jenis: data.jenis,
-        status: data.status,
-        keterangan: data.keterangan,
-        koordinat: data.coordinates,
-        foto: data.imageUrl
+      this.presensi = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        this.presensi.push({
+          id: doc.id,
+          ...data,
+          // Format waktu untuk display
+          waktuDisplay: data.waktu ? this.formatDate(data.waktu.toDate()) : 'Loading...'
+        });
       });
-    });
-    
-    return presences;
-  } catch (error) {
-    console.error('Error loading presence history:', error);
-    throw error;
-  }
-}
-
-// Fungsi untuk mengekspor data ke CSV
-function exportToCSV(presences, filters = {}) {
-  if (presences.length === 0) {
-    toast('Tidak ada data untuk diekspor', 'warning');
-    return;
-  }
-  
-  // Urutkan data sesuai format STDR
-  const sortedPresences = [...presences].sort((a, b) => {
-    // Urutkan berdasarkan nama (A-Z)
-    const nameCompare = a.nama.localeCompare(b.nama);
-    if (nameCompare !== 0) return nameCompare;
-    
-    // Kemudian urutkan berdasarkan tanggal (lama ke baru)
-    return a.waktu - b.waktu;
-  });
-  
-  // Format data ke CSV
-  let csvContent = 'Nama,Tanggal,Shift,Jenis,Status,Koordinat\n';
-  
-  let currentName = '';
-  sortedPresences.forEach((presence, index) => {
-    // Tambahkan baris kosong antar blok nama yang berbeda
-    if (currentName !== presence.nama && index > 0) {
-      csvContent += '\n';
+      
+      this.applyFilters();
+      return this.presensi;
+    } catch (error) {
+      console.error('Error loading presensi:', error);
+      throw error;
     }
-    currentName = presence.nama;
-    
-    const dateStr = presence.waktu.toLocaleDateString('id-ID');
-    const coordsStr = `${presence.koordinat?.latitude?.toFixed(4) || '0'}, ${presence.koordinat?.longitude?.toFixed(4) || '0'}`;
-    
-    csvContent += `"${presence.nama}","${dateStr}","${presence.shift}","${presence.jenis}","${presence.keterangan}","${coordsStr}"\n`;
-  });
-  
-  // Buat file dan unduh
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  
-  // Buat nama file berdasarkan filter
-  let fileName = 'presensi_';
-  if (filters.periode) fileName += `${filters.periode}_`;
-  if (filters.nama) fileName += `${filters.nama.replace(/\s+/g, '_')}_`;
-  fileName += new Date().toISOString().split('T')[0] + '.csv';
-  
-  link.setAttribute('download', fileName);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  toast('CSV berhasil diekspor', 'success');
-}
-
-// Fungsi untuk menampilkan data di tabel
-function renderPresenceTable(presences, limit = 50) {
-  const tableBody = $('#tableBody');
-  tableBody.innerHTML = '';
-  
-  const limitedPresences = limit === 'all' ? presences : presences.slice(0, limit);
-  
-  if (limitedPresences.length === 0) {
-    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Tidak ada data presensi</td></tr>';
-    return;
   }
-  
-  limitedPresences.forEach(presence => {
-    const row = document.createElement('tr');
+
+  // Format tanggal untuk display
+  formatDate(date) {
+    if (!date) return '';
     
-    // Format waktu
-    const waktuStr = presence.waktu.toLocaleDateString('id-ID', {
+    const options = {
       day: '2-digit',
       month: 'long',
-      year: 'numeric'
-    }) + '<br>' + presence.waktu.toLocaleTimeString('id-ID');
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
     
-    // Tentukan kelas status
-    let statusClass = 's-bad';
-    let statusIcon = 'schedule';
+    return date.toLocaleDateString('id-ID', options);
+  }
+
+  // Terapkan filter
+  applyFilters() {
+    let filtered = [...this.presensi];
     
-    if (presence.status === 'tepat_waktu') {
-      statusClass = 's-good';
-      statusIcon = 'check_circle';
-    } else if (presence.status === 'terlambat') {
-      statusClass = 's-warn';
-      statusIcon = 'warning';
-    } else if (presence.status === 'izin') {
-      statusClass = 's-warn';
-      statusIcon = 'event_available';
+    // Filter berdasarkan nama
+    if (this.currentFilter.nama) {
+      const searchTerm = this.currentFilter.nama.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.nama.toLowerCase().includes(searchTerm)
+      );
     }
     
-    // Format koordinat
-    const coordsStr = presence.koordinat ? 
-      `${presence.koordinat.latitude?.toFixed(4) || '0'}, ${presence.koordinat.longitude?.toFixed(4) || '0'}` : 
-      '0, 0';
+    // Filter berdasarkan periode
+    const now = new Date();
+    switch (this.currentFilter.periode) {
+      case 'harian':
+        filtered = filtered.filter(p => {
+          const presensiDate = p.waktu.toDate();
+          return presensiDate.toDateString() === now.toDateString();
+        });
+        break;
+      case 'mingguan':
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        
+        filtered = filtered.filter(p => {
+          const presensiDate = p.waktu.toDate();
+          return presensiDate >= startOfWeek;
+        });
+        break;
+      case 'bulanan':
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = filtered.filter(p => {
+          const presensiDate = p.waktu.toDate();
+          return presensiDate >= startOfMonth;
+        });
+        break;
+      case 'tahunan':
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = filtered.filter(p => {
+          const presensiDate = p.waktu.toDate();
+          return presensiDate >= startOfYear;
+        });
+        break;
+      case 'custom':
+        if (this.currentFilter.dari && this.currentFilter.sampai) {
+          const dari = new Date(this.currentFilter.dari);
+          const sampai = new Date(this.currentFilter.sampai);
+          sampai.setHours(23, 59, 59, 999);
+          
+          filtered = filtered.filter(p => {
+            const presensiDate = p.waktu.toDate();
+            return presensiDate >= dari && presensiDate <= sampai;
+          });
+        }
+        break;
+    }
     
-    row.innerHTML = `
-      <td>${waktuStr}</td>
-      <td>${presence.nama}</td>
-      <td>${presence.jenis}</td>
-      <td><span class="status ${statusClass}"><span class="material-symbols-rounded">${statusIcon}</span>${presence.keterangan}</span></td>
-      <td>${coordsStr}</td>
-      <td><a href="${presence.foto}" target="_blank">Lihat Foto</a></td>
-    `;
+    // Batasi jumlah yang ditampilkan
+    if (this.currentFilter.show !== 'all') {
+      const limit = parseInt(this.currentFilter.show);
+      filtered = filtered.slice(0, limit);
+    }
     
-    tableBody.appendChild(row);
-  });
+    this.filteredPresensi = filtered;
+    return this.filteredPresensi;
+  }
+
+  // Ekspor data ke CSV
+  exportToCSV() {
+    if (this.filteredPresensi.length === 0) {
+      throw new Error('Tidak ada data untuk diekspor');
+    }
+    
+    // Urutkan data sesuai format STDR: per karyawan, kemudian per tanggal
+    const sortedData = [...this.filteredPresensi].sort((a, b) => {
+      // Urutkan berdasarkan nama
+      if (a.nama < b.nama) return -1;
+      if (a.nama > b.nama) return 1;
+      
+      // Kemudian urutkan berdasarkan tanggal
+      return a.waktu.toDate() - b.waktu.toDate();
+    });
+    
+    // Header CSV
+    let csv = 'Nama,Tanggal,Shift,Jenis,Status,Koordinat\n';
+    
+    // Data CSV
+    sortedData.forEach((presensi, index) => {
+      // Tambahkan baris kosong antar blok karyawan yang berbeda
+      if (index > 0 && sortedData[index - 1].nama !== presensi.nama) {
+        csv += '\n';
+      }
+      
+      const row = [
+        `"${presensi.nama}"`,
+        this.formatDateForCSV(presensi.waktu.toDate()),
+        `"${presensi.shift}"`,
+        `"${presensi.jenis}"`,
+        `"${presensi.status}"`,
+        `"${presensi.koordinat.latitude},${presensi.koordinat.longitude}"`
+      ];
+      
+      csv += row.join(',') + '\n';
+    });
+    
+    return csv;
+  }
+
+  // Format tanggal untuk CSV
+  formatDateForCSV(date) {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    
+    return `"${day}/${month}/${year} ${hours}:${minutes}"`;
+  }
+
+  // Update filter
+  updateFilter(newFilter) {
+    this.currentFilter = { ...this.currentFilter, ...newFilter };
+    return this.applyFilters();
+  }
 }
