@@ -741,10 +741,13 @@
         const jenis = $('#jenis').value;
         const statusInfo = getPresenceStatus(now, userData.shift, jenis);
         
-        // Save to Firestore
+        // Save to Firestore - HANYA TANGGAL SAJA (tanpa jam)
+        const today = new Date();
+        const dateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        
         await db.collection('presensi').add({
           uid: currentUser.uid,
-          waktu: firebase.firestore.FieldValue.serverTimestamp(),
+          waktu: dateOnly, // Hanya tanggal saja, tanpa jam
           jenis: jenis,
           status: statusInfo.status,
           koordinat: new firebase.firestore.GeoPoint(currentLocation.lat, currentLocation.lng),
